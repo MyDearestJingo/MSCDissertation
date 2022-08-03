@@ -1,0 +1,85 @@
+<?xml version="1.0" ?>
+<sdf version="1.4">
+  <!-- We use a custom world for the rrbot so that the camera angle is launched correctly -->
+
+  <world name="default">
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <!-- Global light source -->
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <!-- Focus camera on tall pendulum -->
+    <gui fullscreen='0'>
+      <camera name='user_camera'>
+        <pose>4.927360 -4.376610 3.740080 0.000000 0.275643 2.356190</pose>
+        <view_controller>orbit</view_controller>
+      </camera>
+    </gui>
+
+    <model name='tomato_soup_can'>
+      <link name='tomato_soup_can_link'>
+        <inertial>
+          <mass>0.349</mass>
+          <inertia>
+            <ixx>0.000391694</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.000391694</iyy>
+            <iyz>0</iyz>
+            <izz>0.00019003</izz>
+          </inertia>
+          <pose>0 0 0.0505 0 -0 0</pose>
+        </inertial>
+        <collision name='collision'>
+          <pose>0 0 0.0505 0 -0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.033</radius>
+              <length>0.101</length>
+            </cylinder>
+          </geometry>
+          <max_contacts>10</max_contacts>
+          <surface>
+            <contact>
+              <ode/>
+            </contact>
+            <bounce/>
+            <friction>
+              <torsional>
+                <ode/>
+              </torsional>
+              <ode/>
+            </friction>
+          </surface>
+        </collision>
+        <visual name='visual'>
+          <pose>0.01 -0.085 0 0 -0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://tomato_soup_can/meshes/textured.dae</uri>
+            </mesh>
+          </geometry>
+        </visual>
+        <self_collide>0</self_collide>
+        <enable_wind>0</enable_wind>
+        <kinematic>0</kinematic>
+      </link>
+      <plugin name="p3d_base_controller" filename="libgazebo_ros_p3d.so">
+        <alwaysOn>true</alwaysOn>
+        <updateRate>30.0</updateRate>
+        <bodyName>tomato_soup_can_link</bodyName>
+        <topicName>/odom/soup_can_pose</topicName>
+        <gaussianNoise>0.01</gaussianNoise>
+        <frameName>world</frameName>
+        <xyzOffsets>0 0 0</xyzOffsets>
+        <rpyOffsets>0 0 0</rpyOffsets>
+      </plugin>
+      <pose>-0.5 0 0 0 -0 0</pose>
+    </model>
+
+  </world>
+</sdf>
