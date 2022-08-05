@@ -1,11 +1,11 @@
 %% This MatLab code provide EKF function for estimating the pose and twist of an
 %% in 6-D space
 
-% clear all;
+clear all;
 
 %% Args
 ekf = true; 
-ekf = false;
+% ekf = false;
 
 viz = true;
 % viz = false;
@@ -29,13 +29,8 @@ camLinkOptical = [
 camOpticalJoint = [-pi/2, 0, -pi/2];  % writen in file rrbot.xcrob
 
 %% Data loading and pre-process
-estimation = loadData('data/DOPE[DYNAMIC].csv');
-groundtruth = loadData('data/GT[DYNAMIC].csv');
-
-% change Euler order from XYZ to ZYX
-angularx = groundtruth(:, 12);
-groundtruth(:, 12) = groundtruth(:, 14);
-groundtruth(:, 14) = angularx;
+estimation = loadData('data/dope_estm_rec.csv');
+groundtruth = loadData('data/object_odom_rec.csv');
 
 % ! IMPORTANT !
 % ! the base frame of object in Gazebo model is different in DOPE 
@@ -86,17 +81,21 @@ if ekf
         zeros(3,1);   % twist angular velocities
     ];
     statSig = eye(size(x,1));
-    R = eye(size(x,1))*0.1;
-    Q = eye(size(x,1))*0.9;
+    R = eye(size(x,1))*0.5;
+    Q = eye(size(x,1))*0.5;
 
     statHis = [];
     statPredHis = [];
     zHis = [];
+
+    % DEBUG
+    % estimation = [estimation(1:31,:);estimation(32:33,:)];
+    % estimation = estimation(1:30,:);
     for i = 2:size(estimation,1)
-        fprintf("EKF Progress: %d/%d\r",i-1, size(estimation,1)-1)
+        fprintf("EKF Progress: %d/%d\n",i-1, size(estimation,1)-1)
 
         timestamp = estimation(i,1);
-        difft = timestamp - estimation(i-1,1); 
+        difft = timestamp - estimation(i-1,1);
 
         statPred = eval(subs(g, [x; deltat], [stat; difft]));
         Gt       = eval(subs(G, [x; deltat], [stat; difft]));
@@ -124,9 +123,10 @@ if ekf
             eulRot'/difft;                        % euler angular velocities
             % angvel';
         ];
+        % zt'
 
-        stat = statPred + Kt * (zt - eval(subs(h, x, statPred)));
-        % stat = statPred + Kt * (zt - statPred);
+        % stat = statPred + Kt * (zt - eval(subs(h, x, statPred)));
+        stat = statPred + Kt * (zt - statPred);
         statSig = (eye(size(x,1)) - Kt * Ht) * statSigPred;
 
         statHis = [statHis; [timestamp, stat']];
