@@ -100,7 +100,7 @@ class Recorder:
         )
         np.savetxt(
             self.savepath["dope_estm_savepath"], 
-            self.object_odom_buff, delimiter=','
+            self.dope_estm_buff, delimiter=','
         )
         rospy.loginfo(
             "{:d} records have been saved to {}".format(

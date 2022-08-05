@@ -20,6 +20,20 @@
       </camera>
     </gui>
 
+    <light name='user_point_light_0' type='point'>
+      <pose>-0.193611 0.221718 0.1 0 -0 0</pose>
+      <diffuse>0.5 0.5 0.5 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
+      <attenuation>
+        <range>100</range>
+        <constant>0.05</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <cast_shadows>0</cast_shadows>
+      <direction>0 0 -1</direction>
+    </light>
+
     <model name='tomato_soup_can'>
       <link name='tomato_soup_can_link'>
         <inertial>
@@ -68,7 +82,8 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <plugin name="move_soup_can" filename="libmove_soup_can.so"/>
+      <!-- <plugin name="move_soup_can" filename="libmove_soup_can.so"/> -->
+      <plugin name="circle_soup_can" filename="libcircle_soup_can.so"/>
       <plugin name="p3d_base_controller" filename="libgazebo_ros_p3d.so">
         <alwaysOn>true</alwaysOn>
         <updateRate>30.0</updateRate>
@@ -79,7 +94,7 @@
         <xyzOffsets>0 0 0</xyzOffsets>
         <rpyOffsets>0 0 0</rpyOffsets>
       </plugin>
-      <pose>-0.5 0 0 0 -0 0</pose>
+      <pose>-0.5 0.2 0.1 0 -0 0</pose>
     </model>
 
   </world>

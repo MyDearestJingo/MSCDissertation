@@ -7,3 +7,6 @@ list(APPEND CMAKE_CXX_FLAGS "${GAZEBO_CXX_FLAGS}")
 
 add_library(move_soup_can SHARED move_soup_can.cc)
 target_link_libraries(move_soup_can ${GAZEBO_LIBRARIES})
+
+add_library(circle_soup_can SHARED circle_soup_can.cc)
+target_link_libraries(circle_soup_can ${GAZEBO_LIBRARIES})
