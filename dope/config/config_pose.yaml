@@ -1,5 +1,11 @@
+# rrbot simulation camera config
 topic_camera: "/rrbot/camera1/image_raw"
 topic_camera_info: "/rrbot/camera1/camera_info"
+
+# kinect 2 config
+# topic_camera: "/kinect2/hd/image_color"
+# topic_camera_info: "/kinect2/hd/camera_info"
+
 topic_publishing: "dope"
 input_is_rectified: True   # Whether the input image is rectified (strongly suggested!)
 downscale_height: 400      # if the input image is larger than this, scale it down to this pixel height
