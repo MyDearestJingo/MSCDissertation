@@ -1,0 +1,12 @@
+<launch>
+    <include file="$(find rrbot_gazebo)/launch/rrbot_world.launch"/>
+
+    <node pkg="tf2_ros" type="static_transform_publisher" 
+        name="camera_optical_joint" 
+        args="-0.05 0.2 0.15 -0.5 -0.5 0.5 0.5 world camera_link_optical"/>
+
+    <node pkg="rviz" type="rviz" name="rviz_dope"
+        args = "-d $(find dope)/dope_rviz.rviz"/>
+
+    <include file="$(find dope)/launch/dope.launch"/>
+</launch>

@@ -1,0 +1,12 @@
+<launch>
+    <include file="$(find kinect2_bridge)/launch/kinect2_bridge.launch"/>
+
+    <node pkg="tf2_ros" type="static_transform_publisher" 
+        name="camera_optical_joint" 
+        args="0 0 0.043 0 0 -1.57 world kinect2_rgb_optical_frame"/>
+
+    <node pkg="rviz" type="rviz" name="rviz_dope"
+        args = "-d $(find dope)/dope_kinect.rviz"/>
+
+    <include file="$(find dope)/launch/dope.launch"/>
+</launch>
