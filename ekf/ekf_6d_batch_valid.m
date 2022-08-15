@@ -52,34 +52,53 @@ if ekf
     % Define state vector and transition function
     p = sym('p', [3 1]);    % position of origin of the target w.r.t camera C
     o = sym('o', [4 1]);    % quaternion, orientation of the target w.r.t C
-    v = sym('v', [3 1]);    % translation velocities of the target w.r.t Cr = sym('r', [4 1]);
+    % v = sym('v', [3 1]);    % translation velocities of the target w.r.t C
+    cc = sym('cc', [3 1]);  % circle center position w.r.t C
+    cq = sym('nq', [4 1]);  % circle coordinate system orientation w.r.t C
+    rv = sym('rv', [1 1]);  % circular motion angular velocity
     r = sym('r', [3 1]);    % Euler angle (ZYX) representation for twist angular velocities
 
-    x = [p;o;v;r];
+
+    % x = [p;o;v;r];
+    x = [p;o;cc;cq;rv;r];
 
     syms deltat;
+    dTheta = rv * deltat;
 
+    % circle
+    H1 = sym(eye(4));
+    H1(1:3, 1:3) = squat2rotm(cq');
+    H1(1:3, 4) = cc;
+
+    % motion
+    H2 = sym(eye(4));
+    H2(1:3, 1:3) = squat2rotm([cos(dTheta/2), sin(dTheta/2).*[0 0 1]]);
+
+    nextP = H1 * H2 * [p;1];
+    nextP = nextP(1:3);
     g = [ 
-        p + v*deltat; 
+        % p + v*deltat; 
+        nextP;
         squatmultiply(o', seul2quat(r'*deltat))';
-        v;
+        cc;
+        cq;
+        rv;
         r;
     ];
     G = jacobian(g, x);
 
-    h = [p;o;v;r];
+    h = [p;o;cc;cq;rv;r];
     H = jacobian(h, x);
 
     stat = [
-        % estimation(1,2:4)';   % position
-        % estimation(1,5:8)';   % orientation in quaternion [d,i,j,k]
-        % zeros(3,1);           % twist linear velocities
-        % zeros(3,1);           % twist angular velocities
         zeros(3,1);   % position
-        zeros(4,1);   % orientation in quaternion [d,i,j,k]
-        zeros(3,1);   % twist linear velocities
-        zeros(3,1);   % twist angular velocities
+        [1;0;0;0];   % orientation in quaternion [d,i,j,k]
+        zeros(3,1);
+        [1;0;0;0];
+        0;
+        zeros(3,1);
     ];
+    % stat = zeros(18,1);
     statSig = eye(size(x,1));
     R = eye(size(x,1))*0.5;
     Q = eye(size(x,1))*0.5;
@@ -91,7 +110,7 @@ if ekf
     % DEBUG
     % estimation = [estimation(1:31,:);estimation(32:33,:)];
     % estimation = estimation(1:30,:);
-    for i = 2:size(estimation,1)
+    for i = 3:size(estimation,1)
         fprintf("EKF Progress: %d/%d\n",i-1, size(estimation,1)-1)
 
         timestamp = estimation(i,1);
@@ -105,9 +124,9 @@ if ekf
         Kt = statSigPred * Ht' / (Ht * statSigPred * Ht' + Q);
 
         % generate z_t from measurement data
-        quatRot = squatmultiply(estimation(i,5:8), squatinv(estimation(i-1,5:8)));
-        quatRot = squatnormalize(quatRot);
-        eulRot = squat2eul(quatRot);
+        % quatRot = squatmultiply(estimation(i,5:8), squatinv(estimation(i-1,5:8)));
+        % quatRot = squatnormalize(quatRot);
+        % eulRot = squat2eul(quatRot);
         % deltaEul = quat2eul(estimation(i,5:8)) - quat2eul(estimation(i-1,5:8));
         % angvel = deltaEul/difft;
 
@@ -116,14 +135,15 @@ if ekf
         % axangRot(4) = axangRot(4)/difft;
         
         % measurement vector
-        zt = [
-            estimation(i,2:4)';             % current position
-            estimation(i,5:8)';             % current orientation (quaternion)
-            (estimation(i,2:4)-estimation(i-1,2:4))'/difft; % linear velocities
-            eulRot'/difft;                        % euler angular velocities
-            % angvel';
-        ];
+        % zt = [
+        %     estimation(i,2:4)';             % current position
+        %     estimation(i,5:8)';             % current orientation (quaternion)
+        %     (estimation(i,2:4)-estimation(i-1,2:4))'/difft; % linear velocities
+        %     eulRot'/difft;                        % euler angular velocities
+        %     % angvel';
+        % ];
         % zt'
+        zt = genMeasurementCircle(estimation(i-2:i, :));
 
         % stat = statPred + Kt * (zt - eval(subs(h, x, statPred)));
         stat = statPred + Kt * (zt - statPred);
@@ -146,8 +166,8 @@ if viz
         'X-Axis Velocity'; 'Y-Axis Velocity'; 'Z-Axis Velocity'
     ];
     colidx = [2:4, 9:11];
-    for i = 1:6   % position & translation velocities
-    % for i = 1:3 % only position
+    % for i = 1:6   % position & translation velocities
+    for i = 1:3 % only position
         nexttile, hold on
 
         plot(groundtruth(2:end,1),groundtruth(2:end,colidx(i)));
@@ -177,7 +197,7 @@ if viz
         "Angular Axis $$Y$$"; 
         "Angular Axis $$X$$"; 
     ];
-    colidx = [5:8, 12:14];
+    colidx = [5:8, 16:18];
     for i = 1:7    % orientation & angular velocities
     % for i = 7:10    % only orientation
         nexttile, hold on
