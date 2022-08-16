@@ -1,10 +1,14 @@
 # rrbot simulation camera config
-topic_camera: "/rrbot/camera1/image_raw"
-topic_camera_info: "/rrbot/camera1/camera_info"
+# topic_camera: "/rrbot/camera1/image_raw"
+# topic_camera_info: "/rrbot/camera1/camera_info"
 
 # kinect 2 config
 # topic_camera: "/kinect2/hd/image_color"
 # topic_camera_info: "/kinect2/hd/camera_info"
+
+# panda robot gazebo simulation
+topic_camera: "/firstcam/camera/image_raw"
+topic_camera_info: "/firstcam/camera/camera_info"
 
 topic_publishing: "dope"
 input_is_rectified: True   # Whether the input image is rectified (strongly suggested!)
@@ -12,10 +16,10 @@ downscale_height: 400      # if the input image is larger than this, scale it do
 
 # Comment any of these lines to prevent detection / pose estimation of that object
 weights: {
-    # "cracker":"package://dope/weights/cracker_60.pth",
+    "cracker":"package://dope/weights/cracker_60.pth",
     # "gelatin":"package://dope/weights/gelatin_60.pth",
     # "meat":"package://dope/weights/meat_20.pth",
-    # "mustard":"package://dope/weights/mustard_60.pth",
+    "mustard":"package://dope/weights/mustard_60.pth",
     "soup":"package://dope/weights/soup_60.pth",
     #"sugar":"package://dope/weights/sugar_60.pth",
     # "bleach":"package://dope/weights/bleach_28_dr.pth"
@@ -57,7 +61,8 @@ dimensions: {
     "cracker": [16.403600692749023,21.343700408935547,7.179999828338623],
     "gelatin": [8.918299674987793, 7.311500072479248, 2.9983000755310059],
     "meat": [10.164673805236816,8.3542995452880859,5.7600898742675781],
-    "mustard": [9.6024150848388672,19.130100250244141,5.824894905090332],
+    "mustard": [9.6024150848388672,19.130100250244141,5.824894905090332],     
+    # "mustard": [6.9, 15.34, 4.4],  # the smaller one in real world
     "soup": [6.7659378051757813,10.185500144958496,6.771425724029541],
     "sugar": [9.267730712890625,17.625339508056641,4.5134143829345703],
     "bleach": [10.267730712890625,26.625339508056641,7.5134143829345703],
