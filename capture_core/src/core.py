@@ -35,7 +35,7 @@ class Capturer:
         # camera pose
         # @ TODO:
         # @   [ ]. Init camera pose from config file
-        self.cam_pose = np.fromstring("1.5 0 0.2 1.57 -0 -1.57", sep=' ') # orientation in yaw-pitch-roll
+        self.cam_pose = np.fromstring("1.5 0 0.2 -1.57 -0 1.57", sep=' ') # orientation in yaw-pitch-roll
         self.rot_w_c = R.from_euler('zyx', self.cam_pose[-3:])   # rotation from world frame to camera frame
 
         # ROS node init
@@ -59,8 +59,9 @@ class Capturer:
         rospy.logdebug("Init goal pose")
         self.goal_pose_o = np.zeros(7)
         self.goal_pose_o[:3] = [-(self.dim[0]/2 + self.gripper_thickness),0,0]
-        self.rot_o_g = R.from_euler('zyx', [-1.57, 0, 1.57]) # rotation from object frame to goal pose
+        self.rot_o_g = R.from_euler('zyx', [-1.57, 0, -1.57]) # rotation from object frame to goal pose
         self.goal_pose_o[3:] = self.rot_o_g.as_quat()
+        # rospy.logdebug(self.goal_pose_o)
 
 
     # unpackage the dimension msg
@@ -89,35 +90,39 @@ class Capturer:
             self.pose_ready = True
 
     def calc_capture_point(self):
-        obj_pose = self.obj_stampose[3:].copy()    # fix the current pose
+        obj_pose = self.obj_stampose[2:].copy()    # fix the current pose
         goal_pose = self.goal_pose_o.copy()
         # print(self.goal_pose_o[:3])
 
         # --- gripper goal position calculation ---
         rot_c_o = R.from_quat(obj_pose[-4:])    # rotation from camera frame to object frame
         goal_pose[:3] = rot_c_o.inv().apply(goal_pose[:3])
-        goal_pose[:3] -= obj_pose[:3]  # within camera frame now
+        # rospy.logdebug(obj_pose[:3])
+        goal_pose[:3] += obj_pose[:3]  # within camera frame now
 
-        # goal_pose[:3] = self.rot_w_c.inv().apply(goal_pose[:3])
-        # goal_pose[:3] -= self.cam_pose[:3] # within world frame now
+        goal_pose[:3] = self.rot_w_c.inv().apply(goal_pose[:3])
+        goal_pose[:3] += self.cam_pose[:3] # within world frame now
+        rospy.logdebug(goal_pose[:3])
 
         # --- gripper goal orientation calculation ---
-        # rot_w_g = R.from_matrix(
-        #             self.rot_w_c.as_matrix()
-        #             * rot_c_o.as_matrix()
-        #             * self.rot_o_g.as_matrix()).inv()
-        # goal_pose[3:] = rot_w_g.as_quat()
-
         rot_w_g = R.from_matrix(
-            self.rot_w_c.as_matrix()
-            * rot_c_o.as_matrix()
-            * self.rot_o_g.as_matrix()).inv()
+                    self.rot_w_c.as_matrix()
+                    * rot_c_o.as_matrix()
+                    * self.rot_o_g.as_matrix()).inv()
         goal_pose[3:] = rot_w_g.as_quat()
+
+        # rot_c_g= R.from_matrix(
+        #     rot_c_o.as_matrix()
+        #     * self.rot_o_g.as_matrix())
+        # goal_pose[3:] = rot_c_g.inv().as_quat()
+
+        rospy.logdebug(goal_pose[3:])
         
         return goal_pose
     
     def pub_goal(self, _goal_pose):
         msg = PoseStamped()
+        # msg.header.frame_id = 'world'
         msg.header.frame_id = 'camera_link_optical'
         msg.pose.position.x    = _goal_pose[0]
         msg.pose.position.y    = _goal_pose[1]
