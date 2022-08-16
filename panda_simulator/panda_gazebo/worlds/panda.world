@@ -1,0 +1,223 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="default">
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <physics type="ode">
+      <real_time_update_rate>1000.0</real_time_update_rate>
+    </physics>
+    
+    <gravity>
+      0.0 0.0 0.0
+    </gravity>
+
+    <gui fullscreen='0'>
+    </gui>
+
+    <model name='camera'>
+      <pose>1.5 0 0.2 0 -0 3.1415926</pose>
+      <link name='link'>
+        <inertial>
+          <mass>0.1</mass>
+          <inertia>
+            <ixx>0.000166667</ixx>
+            <iyy>0.000166667</iyy>
+            <izz>0.000166667</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+          <pose>0 0 0 0 -0 0</pose>
+        </inertial>
+        <collision name='collision'>
+          <geometry>
+            <box>
+              <size>0.1 0.1 0.1</size>
+            </box>
+          </geometry>
+          <max_contacts>10</max_contacts>
+          <surface>
+            <contact>
+              <ode/>
+            </contact>
+            <bounce/>
+            <friction>
+              <torsional>
+                <ode/>
+              </torsional>
+              <ode/>
+            </friction>
+          </surface>
+        </collision>
+        <visual name='visual'>
+          <geometry>
+            <box>
+              <size>0.1 0.1 0.1</size>
+            </box>
+          </geometry>
+        </visual>
+        <sensor name='camera' type='camera'>
+          <camera>
+            <horizontal_fov>1.047</horizontal_fov>
+            <image>
+              <width>1920</width>
+              <height>1080</height>
+            </image>
+            <clip>
+              <near>0.1</near>
+              <far>100</far>
+            </clip>
+          </camera>
+          <always_on>1</always_on>
+          <update_rate>30</update_rate>
+          <visualize>1</visualize>
+          <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
+            <alwaysOn>true</alwaysOn>
+            <updateRate>0.0</updateRate>
+            <cameraName>firstcam/camera</cameraName>
+            <imageTopicName>image_raw</imageTopicName>
+            <cameraInfoTopicName>camera_info</cameraInfoTopicName>
+            <frameName>camera_link_optical</frameName>
+            <!-- setting hackBaseline to anything but 0.0 will cause a misalignment
+                between the gazebo sensor image and the frame it is supposed to
+                be attached to -->
+            <hackBaseline>0.0</hackBaseline>
+            <distortionK1>0.0</distortionK1>
+            <distortionK2>0.0</distortionK2>
+            <distortionK3>0.0</distortionK3>
+            <distortionT1>0.0</distortionT1>
+            <distortionT2>0.0</distortionT2>
+            <CxPrime>0</CxPrime>
+            <Cx>0.0</Cx>
+            <Cy>0.0</Cy>
+            <focalLength>0.0</focalLength>
+          </plugin>
+        </sensor>
+        <self_collide>0</self_collide>
+        <enable_wind>0</enable_wind>
+        <kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <model name='tomato_soup_can'>
+      <pose>0.5 0 0 0 -0 0</pose>
+      <link name='tomato_soup_can_link'>
+        <inertial>
+          <mass>0.349</mass>
+          <inertia>
+            <ixx>0.000391694</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.000391694</iyy>
+            <iyz>0</iyz>
+            <izz>0.00019003</izz>
+          </inertia>
+          <pose>0 0 0.0505 0 -0 0</pose>
+        </inertial>
+        <collision name='collision'>
+          <pose>0 0 0.0505 0 -0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.033</radius>
+              <length>0.101</length>
+            </cylinder>
+          </geometry>
+          <max_contacts>10</max_contacts>
+          <surface>
+            <contact>
+              <ode/>
+            </contact>
+            <bounce/>
+            <friction>
+              <torsional>
+                <ode/>
+              </torsional>
+              <ode/>
+            </friction>
+          </surface>
+        </collision>
+        <visual name='visual'>
+          <pose>0.01 -0.085 0 0 -0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://tomato_soup_can/meshes/textured.dae</uri>
+            </mesh>
+          </geometry>
+        </visual>
+        <self_collide>0</self_collide>
+        <enable_wind>0</enable_wind>
+        <kinematic>0</kinematic>
+      </link>
+      <!-- <plugin name="move_soup_can" filename="libmove_soup_can.so"/> -->
+      <!-- <plugin name="circle_soup_can" filename="libcircle_soup_can.so"/> -->
+      <plugin name="p3d_base_controller" filename="libgazebo_ros_p3d.so">
+        <alwaysOn>true</alwaysOn>
+        <updateRate>30.0</updateRate>
+        <bodyName>tomato_soup_can_link</bodyName>
+        <topicName>/odom/soup_can_pose</topicName>
+        <gaussianNoise>0.01</gaussianNoise>
+        <frameName>world</frameName>
+        <xyzOffsets>0 0 0</xyzOffsets>
+        <rpyOffsets>0 0 0</rpyOffsets>
+      </plugin>
+    </model>
+
+    <model name='cracker_box'>
+      <link name='link'>
+        <inertial>
+          <mass>0.411</mass>
+          <inertia>
+            <ixx>0.00236544</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.00163372</iyy>
+            <iyz>0</iyz>
+            <izz>0.000978317</izz>
+          </inertia>
+          <pose>0 0 0.105 0 -0 0</pose>
+        </inertial>
+        <collision name='collision'>
+          <pose>0 0 0.105 0 -0 0</pose>
+          <geometry>
+            <box>
+              <size>0.06 0.158 0.21</size>
+            </box>
+          </geometry>
+          <max_contacts>10</max_contacts>
+          <surface>
+            <contact>
+              <ode/>
+            </contact>
+            <bounce/>
+            <friction>
+              <torsional>
+                <ode/>
+              </torsional>
+              <ode/>
+            </friction>
+          </surface>
+        </collision>
+        <visual name='visual'>
+          <pose>0.015 0.015 0 0 -0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://cracker_box/meshes/textured.dae</uri>
+            </mesh>
+          </geometry>
+        </visual>
+        <self_collide>0</self_collide>
+        <enable_wind>0</enable_wind>
+        <kinematic>0</kinematic>
+      </link>
+      <pose>0.331539 -0.347128 0 0 -0 0</pose>
+      <enable_wind>0</enable_wind>
+    </model>
+    
+  </world>
+</sdf>
