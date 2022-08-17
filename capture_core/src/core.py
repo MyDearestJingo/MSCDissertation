@@ -1,11 +1,8 @@
 #!/home/tuos/miniconda3/bin/python
-from logging import captureWarnings
-from os import listdir
 import numpy as np
 import rospy
 from std_msgs.msg import String
 from geometry_msgs.msg import PoseStamped
-from panda_robot import PandaArm
 from scipy.spatial.transform import Rotation as R
 
 
@@ -35,8 +32,8 @@ class Capturer:
         # camera pose
         # @ TODO:
         # @   [ ]. Init camera pose from config file
-        self.cam_pose = np.fromstring("1.5 0 0.2 -1.57 -0 1.57", sep=' ') # orientation in yaw-pitch-roll
-        self.rot_w_c = R.from_euler('zyx', self.cam_pose[-3:])   # rotation from world frame to camera frame
+        self.cam_pose = np.fromstring("1.5 0 0.2 1.57 -0 -1.57", sep=' ') # orientation in yaw-pitch-roll
+        self.rot_w_c = R.from_euler('ZYX', self.cam_pose[-3:])   # rotation from world frame to camera frame
 
         # ROS node init
         rospy.init_node(node_name,log_level=rospy.DEBUG)
@@ -50,7 +47,7 @@ class Capturer:
                 rospy.loginfo_once("Waiting for topic {} ready".format(subtopic_pose))
             if not self.dim_ready:
                 rospy.loginfo_once("Waiting for topic {} ready".format(subtopic_dim))
-            rospy.sleep(0.5)
+            rospy.sleep(0.1)
         rospy.loginfo("Subscribed topics ready")
 
         # initial goal pose of gripper within object frame
@@ -59,7 +56,8 @@ class Capturer:
         rospy.logdebug("Init goal pose")
         self.goal_pose_o = np.zeros(7)
         self.goal_pose_o[:3] = [-(self.dim[0]/2 + self.gripper_thickness),0,0]
-        self.rot_o_g = R.from_euler('zyx', [-1.57, 0, -1.57]) # rotation from object frame to goal pose
+        # self.rot_o_g = R.from_euler('zyx', [-np.pi/2, 0, -np.pi/2]) # rotation from object frame to goal pose
+        self.rot_o_g = R.from_quat([-0.5, 0.5, -0.5, 0.5]) # rotation from object frame to goal pose
         self.goal_pose_o[3:] = self.rot_o_g.as_quat()
         # rospy.logdebug(self.goal_pose_o)
 
@@ -94,36 +92,54 @@ class Capturer:
         goal_pose = self.goal_pose_o.copy()
         # print(self.goal_pose_o[:3])
 
+
         # --- gripper goal position calculation ---
         rot_c_o = R.from_quat(obj_pose[-4:])    # rotation from camera frame to object frame
-        goal_pose[:3] = rot_c_o.inv().apply(goal_pose[:3])
-        # rospy.logdebug(obj_pose[:3])
-        goal_pose[:3] += obj_pose[:3]  # within camera frame now
+        # goal_pose[:3] = rot_c_o.inv().apply(goal_pose[:3]) 
+        goal_pose[:3] = rot_c_o.apply(goal_pose[:3]) 
+        goal_pose[:3] += obj_pose[:3]           # within camera frame now
 
-        goal_pose[:3] = self.rot_w_c.inv().apply(goal_pose[:3])
-        goal_pose[:3] += self.cam_pose[:3] # within world frame now
+        # goal_pose[:3] = self.rot_w_c.inv().apply(goal_pose[:3]) # <- wrong output
+        goal_pose[:3] = self.rot_w_c.apply(goal_pose[:3])       # <- correct output
+        # rospy.logdebug(self.rot_w_c.as_euler('ZYX'))
+        rospy.logdebug((self.rot_w_c * self.rot_w_c.inv()).as_euler("ZYX"))
+        goal_pose[:3] += self.cam_pose[:3]      # within world frame now
         rospy.logdebug(goal_pose[:3])
 
-        # --- gripper goal orientation calculation ---
-        rot_w_g = R.from_matrix(
-                    self.rot_w_c.as_matrix()
-                    * rot_c_o.as_matrix()
-                    * self.rot_o_g.as_matrix()).inv()
-        goal_pose[3:] = rot_w_g.as_quat()
 
-        # rot_c_g= R.from_matrix(
-        #     rot_c_o.as_matrix()
-        #     * self.rot_o_g.as_matrix())
-        # goal_pose[3:] = rot_c_g.inv().as_quat()
+        # --- gripper goal orientation calculation --- #
 
-        rospy.logdebug(goal_pose[3:])
+        ## --- in camerea frame --- ##
+        # rot_c_g = rot_c_o * self.rot_o_g # checked
+        # goal_pose[3:] = rot_c_g.as_quat()
+
+        ## --- in world frame --- ##
+        rot_w_g = self.rot_w_c * rot_c_o * self.rot_o_g # checked
+        offset = R.from_euler('ZYX', [0, np.pi, 0])     # offset between the hand frame in transformation tree and MoveIt
+        goal_pose[3:] = (offset*rot_w_g).as_quat()
+
+        # goal_pose[:3] = [0,0.5,0]                 # debug in world frame
+        # goal_pose[:3] = obj_pose[:3] + [0.3,0,0]  # debug in camera frame
+
+        # goal_pose[3:] = self.rot_w_c.as_quat()    # camera orientation checked
+        # goal_pose[3:] = self.rot_o_g.as_quat()    # goal gripper orientation checked
+        # goal_pose[3:] = rot_c_o.as_quat()         # object orientation checked
+
+        # temp_r = R.from_quat(goal_pose[3:])
+        # rospy.logdebug(temp_r.as_euler('ZYX'))
+
+        # camera pose checked
+        # goal_pose[:3] = self.cam_pose[:3] + [0,0.2,0]
+        # goal_pose[3:] = self.rot_w_c.as_quat()
+
+        # rospy.logdebug(goal_pose[3:])
         
         return goal_pose
     
     def pub_goal(self, _goal_pose):
         msg = PoseStamped()
-        # msg.header.frame_id = 'world'
-        msg.header.frame_id = 'camera_link_optical'
+        msg.header.frame_id = 'world'
+        # msg.header.frame_id = 'camera_link_optical'
         msg.pose.position.x    = _goal_pose[0]
         msg.pose.position.y    = _goal_pose[1]
         msg.pose.position.z    = _goal_pose[2]
@@ -135,25 +151,10 @@ class Capturer:
 
 if __name__ == "__main__":
     core = Capturer()
+    
     while True:
         goal_pose = core.calc_capture_point()
         core.pub_goal(goal_pose)
-        rospy.sleep(1)
-    pass
-    
-     
-
-    # init robot
-    if False:
-        robot = PandaArm() # create PandaArm instance
-        robot.move_to_neutral() # moves robot to neutral pose; uses moveit if available, else JointTrajectory action client
-
-        pos,ori = robot.ee_pose() # get current end-effector pose (3d position and orientation quaternion of end-effector frame in base frame)
-
-        robot.get_gripper().home_joints() # homes gripper joints
-        robot.get_gripper().open() # open gripper
-
-        robot.move_to_joint_position([-8.48556818e-02, -8.88127666e-02, -6.59622769e-01, -1.57569726e+00, -4.82374882e-04,  2.15975946e+00,  4.36766917e-01]) # move robot to the specified pose
-
-        robot.move_to_cartesian_pose(pos,ori) # move the robot end-effector to pose specified by 'pos','ori'
+        rospy.loginfo("Goal pose is published as {}".format(goal_pose))
+        rospy.sleep(0.1)
     pass
