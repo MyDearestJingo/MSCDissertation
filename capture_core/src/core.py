@@ -24,10 +24,14 @@ class Capturer:
         self.obj_dim = None
 
         self.gripper_thickness = 0.065
+        self.offset = R.from_euler('ZYX', [0, np.pi, 0])     # offset between the hand frame in transformation tree and MoveIt
+
 
         # state var
-        self.dim_ready  = False
-        self.pose_ready = False
+        # self.dim_ready  = False
+        # self.pose_ready = False
+        self.dim_ready  = True
+        self.pose_ready = True
 
         # camera pose
         # @ TODO:
@@ -55,10 +59,16 @@ class Capturer:
         # @   [ ]. Init from config file
         rospy.logdebug("Init goal pose")
         self.goal_pose_o = np.zeros(7)
-        self.goal_pose_o[:3] = [-(self.dim[0]/2 + self.gripper_thickness),0,0]
-        # self.rot_o_g = R.from_euler('zyx', [-np.pi/2, 0, -np.pi/2]) # rotation from object frame to goal pose
-        self.rot_o_g = R.from_quat([-0.5, 0.5, -0.5, 0.5]) # rotation from object frame to goal pose
-        self.goal_pose_o[3:] = self.rot_o_g.as_quat()
+
+        # Capture from right
+        # self.goal_pose_o[:3] = [-(self.dim[0]/2 + self.gripper_thickness+0.1),-0.03, 0]
+        # self.rot_o_g = R.from_quat([-0.5, 0.5, -0.5, 0.5]) # rotation from object frame to goal pose
+        # self.rot_o_g = R.from_euler('ZYX', [0, 0, np.pi/2]) * self.rot_o_g
+
+        # Capture from top
+        # self.goal_pose_o[:3] = [0, -(self.dim[1]/2 + self.gripper_thickness+0.1), 0]
+        # self.rot_o_g = R.from_euler('ZYX', [-np.pi/2, np.pi/2, 0]) # rotation from object frame to goal pose
+        # self.goal_pose_o[3:] = self.rot_o_g.as_quat()
         # rospy.logdebug(self.goal_pose_o)
 
 
@@ -115,8 +125,7 @@ class Capturer:
 
         ## --- in world frame --- ##
         rot_w_g = self.rot_w_c * rot_c_o * self.rot_o_g # checked
-        offset = R.from_euler('ZYX', [0, np.pi, 0])     # offset between the hand frame in transformation tree and MoveIt
-        goal_pose[3:] = (offset*rot_w_g).as_quat()
+        goal_pose[3:] = (self.offset*rot_w_g).as_quat()
 
         # goal_pose[:3] = [0,0.5,0]                 # debug in world frame
         # goal_pose[:3] = obj_pose[:3] + [0.3,0,0]  # debug in camera frame
@@ -153,7 +162,12 @@ if __name__ == "__main__":
     core = Capturer()
     
     while True:
-        goal_pose = core.calc_capture_point()
+        # goal_pose = core.calc_capture_point()
+        goal_pose = np.fromstring("0.3 -0.2 0.3 0 0 0 1 ", sep=' ')
+        # goal_pose[3:] = R.from_euler('ZYX', [np.pi, 0, 0]).as_quat()
+        # goal_pose[3:] = R.from_euler('ZYX', [0, 1.57, 0]).as_quat()
+        goal_pose[3:] = R.from_euler('ZYX', [0, 0, 1.57]).as_quat()
+        # goal_pose[3:] = (R.from_euler('ZYX', [0, 0, np.pi/2])* R.from_quat(goal_pose[3:])).as_quat()
         core.pub_goal(goal_pose)
         rospy.loginfo("Goal pose is published as {}".format(goal_pose))
         rospy.sleep(0.1)
