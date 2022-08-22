@@ -2,8 +2,11 @@
 import numpy as np
 import rospy
 from std_msgs.msg import String
+from actionlib_msgs.msg import GoalStatusArray, GoalStatus
+from moveit_msgs.msg import MoveGroupActionResult
 from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
+from panda_robot import PandaArm
 
 
 class Capturer:
@@ -19,6 +22,9 @@ class Capturer:
         subtopic_dim = "/dope/dimension_{name}".format(name=obj_name)
         subtopic_pose = "/dope/pose_{name}".format(name=obj_name)
         pubtopic_goal = "/{}/goal_gripper_pose".format(node_name)
+        subtopic_moveitstat = "/move_group/status"
+        subtopic_moveitresult = "/move_group/result"
+
 
         self.obj_stampose = None
         self.obj_dim = None
@@ -27,11 +33,13 @@ class Capturer:
         self.offset = R.from_euler('ZYX', [0, np.pi, 0])     # offset between the hand frame in transformation tree and MoveIt
 
 
-        # state var
-        # self.dim_ready  = False
-        # self.pose_ready = False
+        # status var
+        self.dim_ready  = False
+        self.pose_ready = False
         self.dim_ready  = True
         self.pose_ready = True
+        self.moveitstat_code = None
+        self.moveitresultstat_code = None
 
         # camera pose
         # @ TODO:
@@ -44,6 +52,18 @@ class Capturer:
         self.suber_dim = rospy.Subscriber(subtopic_dim, String, self.callback_dim, queue_size=1)
         self.suber_pose = rospy.Subscriber(subtopic_pose, PoseStamped, self.callback_pose, queue_size=1)
         self.puber_goal = rospy.Publisher(pubtopic_goal, PoseStamped)
+        self.suber_moveitstat = rospy.Subscriber(
+            subtopic_moveitstat,
+            GoalStatusArray,
+            self.callback_moveitstat,
+            queue_size=5
+        )
+        self.suber_moveitresult = rospy.Subscriber(
+            subtopic_moveitresult,
+            MoveGroupActionResult,
+            self.callback_moveitresult,
+            queue_size=5
+        )
 
         # --- goal gripper pose calculation --- #
         while not (self.pose_ready and self.dim_ready):
@@ -66,8 +86,8 @@ class Capturer:
         # self.rot_o_g = R.from_euler('ZYX', [0, 0, np.pi/2]) * self.rot_o_g
 
         # Capture from top
-        # self.goal_pose_o[:3] = [0, -(self.dim[1]/2 + self.gripper_thickness+0.1), 0]
-        # self.rot_o_g = R.from_euler('ZYX', [-np.pi/2, np.pi/2, 0]) # rotation from object frame to goal pose
+        # self.goal_pose_o[:3] = [0, -(self.dim[1]/2 + self.gripper_thickness+0.03), 0]
+        # self.rot_o_g = R.from_euler('ZYX', [0, 0, -np.pi/2]) # rotation from object frame to goal pose
         # self.goal_pose_o[3:] = self.rot_o_g.as_quat()
         # rospy.logdebug(self.goal_pose_o)
 
@@ -96,6 +116,18 @@ class Capturer:
         ])
         if not self.pose_ready:
             self.pose_ready = True
+
+
+    def callback_moveitstat(self, data):
+        self.moveitstat_code = data.status_list[0].status
+        # rospy.logdebug("MoveIt status code is {}".format(self.moveitstat_code))
+        pass
+
+
+    def callback_moveitresult(self, data):
+        self.moveitresultstat_code = data.status.status
+        rospy.logdebug("MoveIt result status code is {}".format(self.moveitresultstat_code))
+
 
     def calc_capture_point(self):
         obj_pose = self.obj_stampose[2:].copy()    # fix the current pose
@@ -126,6 +158,7 @@ class Capturer:
         ## --- in world frame --- ##
         rot_w_g = self.rot_w_c * rot_c_o * self.rot_o_g # checked
         goal_pose[3:] = (self.offset*rot_w_g).as_quat()
+        # goal_pose[3:] = rot_w_g.as_quat()
 
         # goal_pose[:3] = [0,0.5,0]                 # debug in world frame
         # goal_pose[:3] = obj_pose[:3] + [0.3,0,0]  # debug in camera frame
@@ -160,15 +193,51 @@ class Capturer:
 
 if __name__ == "__main__":
     core = Capturer()
+
+    # --- motion for capturing a cracker box at pose [0.6, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0] --- #
+    goal_pose = np.array([0.6, 0.0, 0.5, 0.0, 0.0, 0.0, 1.0])
+    # goal_pose = np.array([0.6, 0.0, -0.3, 0.0, 0.0, 0.0, 1.0])
     
-    while True:
-        # goal_pose = core.calc_capture_point()
-        goal_pose = np.fromstring("0.3 -0.2 0.3 0 0 0 1 ", sep=' ')
-        # goal_pose[3:] = R.from_euler('ZYX', [np.pi, 0, 0]).as_quat()
-        # goal_pose[3:] = R.from_euler('ZYX', [0, 1.57, 0]).as_quat()
-        goal_pose[3:] = R.from_euler('ZYX', [0, 0, 1.57]).as_quat()
-        # goal_pose[3:] = (R.from_euler('ZYX', [0, 0, np.pi/2])* R.from_quat(goal_pose[3:])).as_quat()
-        core.pub_goal(goal_pose)
-        rospy.loginfo("Goal pose is published as {}".format(goal_pose))
-        rospy.sleep(0.1)
-    pass
+    goal_pose[3:] = np.fromstring("0.73183567 -0.68028538 -0.02525618 0.03147193", sep=' ')
+
+    goal_list = [goal_pose.copy()]
+    goal_pose[:3] = [0.6, 0.0, 0.32]
+    goal_list.append(goal_pose.copy())
+    goal_pose[:3] = [0.6, 0.0, 0.5]
+    goal_list.append(goal_pose.copy())
+    
+    print(goal_list)
+    for i in range(0,2):
+        print(i)
+        goal_pose = goal_list[i%2]
+        # while core.moveitstat_code != GoalStatus.PENDING \
+        #     and core.moveitstat_code != GoalStatus.ACTIVE :
+        core.moveitresultstat_code = GoalStatus.PENDING
+        while core.moveitresultstat_code != GoalStatus.SUCCEEDED:
+            # and core.moveitstat_code == GoalStatus.SUCCEEDED:
+            
+            core.pub_goal(goal_pose)
+            rospy.loginfo("Goal pose is published as {}".format(goal_pose))
+            # if core.moveitstat_code == GoalStatus.SUCCEEDED:
+            #     break
+            rospy.sleep(1)
+            if core.moveitresultstat_code == GoalStatus.ABORTED:
+                break
+        rospy.sleep(2)
+    rospy.loginfo("FINISH")
+    rospy.spin()
+    
+    # while True:
+    # for i in range(1,3):
+    #     # goal_pose = core.calc_capture_point()
+    #     # goal_pose = np.fromstring("0.3 -0.2 0.5 0 0 0 1 ", sep=' ')
+    #     # goal_pose = np.fromstring("0.35718674 -0.34046052  0.250838767  0.73183567 -0.68028538 -0.02525618 0.03147193", sep=' ')
+    #     # goal_pose[3:] = R.from_euler('ZYX', [np.pi, 0, 0]).as_quat()
+    #     # goal_pose[3:] = R.from_euler('ZYX', [0, 1.57, 0]).as_quat()
+    #     # goal_pose[3:] = R.from_euler('ZYX', [0, 0, 1.57]).as_quat()
+    #     # goal_pose[3:] = (R.from_euler('ZYX', [0, 0, np.pi/2])* R.from_quat(goal_pose[3:])).as_quat()
+    #     core.pub_goal(goal_pose)
+    #     rospy.loginfo("Goal pose is published as {}".format(goal_pose))
+    #     rospy.sleep(1)
+    #     # break
+    # pass

@@ -3,8 +3,8 @@
 import numpy as np
 import quaternion as quat
 import rospy
-from std_msgs.msg import String
-from std_msgs.msg import Bool
+from std_msgs.msg import String, Bool
+from actionlib_msgs.msg import GoalStatusArray
 from geometry_msgs.msg import PoseStamped
 from panda_robot import PandaArm
 from scipy.spatial.transform import Rotation as R
@@ -16,36 +16,42 @@ class Executor:
         # Reserve for reading config file
         # ...
 
-        node_name = "capture_executor"
         subtopic_goal = "/capture_core/goal_gripper_pose"
         subtopic_resest = "/{}/reset".format(node_name)
+        subtopic_moveitstat = "/move_group/status"
 
         self.THRES_ARRIVAL = 0.01
 
-        # --- ROS node init --- #
-        rospy.init_node(node_name,log_level=rospy.DEBUG)
+        # --- Suber/puber init --- #
         suber_goal = rospy.Subscriber(
-                        subtopic_goal, 
-                        PoseStamped, 
-                        self.callback_goal, 
-                        queue_size=1
+            subtopic_goal, 
+            PoseStamped, 
+            self.callback_goal, 
+            queue_size=1
         )
         suber_reset = rospy.Subscriber(
-                        subtopic_resest,
-                        Bool,
-                        self.callback_reset
+            subtopic_resest,
+            Bool,
+            self.callback_reset
         )
+        suber_moveitstat = rospy.Subscriber(
+            subtopic_moveitstat,
+            GoalStatusArray,
+            self.callback_moveitstat
+        )
+
 
         # --- Panda robot init --- #
         self.robot = PandaArm() # create PandaArm instance
-        # self.reset_pose()
+        self.reset_pose()
 
 
-        # --- State variables --- #
+        # --- Status variables --- #
+        self.moveitstat_code = 3
         self.buff_suber_goal = None
         self.curr_pose = self.update_pose()
-        self.is_arrive = True
-        self.curr_task = self.curr_pose
+        self.is_arrive = False
+        self.curr_task = None
 
 
     def callback_goal(self, data):
@@ -66,12 +72,17 @@ class Executor:
     def callback_reset(self, data):
         if data.data:
             self.reset_pose()
+
+
+    def callback_moveitstat(self, data):
+        self.moveitstat_code = data.status_list[0].status
+        pass
     
     def check_arrival(self,_pose=None):
         self.update_pose()
 
         if self.curr_task is None:
-            self.is_arrive = True
+            self.is_arrive = False
 
         elif self.curr_pose is not None:
             _pose = self.curr_task if _pose is None else _pose
@@ -80,6 +91,7 @@ class Executor:
 
             if diff < self.THRES_ARRIVAL:
                 self.is_arrive = True 
+                self.curr_task = None
                 rospy.loginfo("Arrive to {}".format(self.curr_pose))
 
             else:
@@ -94,27 +106,34 @@ class Executor:
     def set_new_goal(self, goal_pose=None):
         if goal_pose is not None:
             self.curr_task = goal_pose
-        else:
+        elif self.buff_suber_goal is not None:
             self.curr_task = self.buff_suber_goal
+            self.buff_suber_goal = None
+            rospy.loginfo("Task is set to {}".format(self.curr_task))
 
     def exec(self):
         if self.curr_task is None:
-            rospy.loginfo_once("No task set")
+            # rospy.loginfo_once("No task set")
             return
 
         try:
-            while not self.check_arrival():
+            # while not self.check_arrival():
                 # move the robot end-effector to pose specified by 'pos','ori'
                 # self.curr_task[3:] = (R.from_euler('ZYX', [np.pi, 0, 0]) * R.from_quat(self.curr_task[3:])).as_quat()
-                goal_pose = self.curr_task.copy()
-                temp = R.from_quat(self.curr_task[3:]).as_euler('ZYX')
-                goal_pose[3:] = R.from_euler('ZYX', np.array([temp[2], -temp[1], -temp[0]+np.pi])).as_quat()
-                # goal_pose[3:] = (R.from_euler('ZYX', [0, -1.57, 0])*R.from_quat(goal_pose[3:])).as_quat()
-                self.robot.move_to_cartesian_pose(
-                                pos=goal_pose[:3],
-                                ori=quat.from_float_array(goal_pose[3:]))
-                # self.robot.move_to_joint_position(self.curr_task)
-                rospy.sleep(0.1)
+            goal_pose = self.curr_task.copy()
+            temp = R.from_quat(self.curr_task[3:]).as_euler('ZYX')
+            goal_pose[3:] = R.from_euler('ZYX', np.array([temp[2], -temp[1], -temp[0]+np.pi])).as_quat()
+            rospy.loginfo("Goal pose {} is transmited".format(goal_pose))
+            self.robot.move_to_cartesian_pose(
+                            pos=goal_pose[:3],
+                            ori=quat.from_float_array(goal_pose[3:]))
+
+            if self.moveitstat_code == 3: # success
+                pass
+            elif self.moveitstat_code == 4: # aborted
+                pass
+            rospy.sleep(0.5)
+            self.robot.exec_gripper_cmd(0, 1000)
             self.curr_task=None
         finally:
             rospy.logdebug("exec quits")
@@ -138,6 +157,8 @@ class Executor:
         return curr_pose
 
 if __name__ == "__main__":
+    node_name = "capture_executor"
+    rospy.init_node(node_name,log_level=rospy.DEBUG)
     executor = Executor()
     try:
         while True:
