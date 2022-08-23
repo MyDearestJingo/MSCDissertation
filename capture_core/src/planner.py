@@ -12,13 +12,14 @@ from std_msgs.msg import String
 from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import Pose
 from scipy.spatial.transform import Rotation as R
+from moveit_commander import PlanningSceneInterface
+from moveit_commander.conversions import pose_to_list, list_to_pose
 
 class Planner:
-    def __init__(self, node_name:String, obj_name:String, _obj_dim=None, _obj_pose=None):
-
+    def __init__(self, node_name:str, _obj_name:str, _obj_frame_ori:list, _obj_dim=None, _obj_pose=None):
         # ROS subscribers & publishers
-        subtopic_dim = "/dope/dimension_{name}".format(name=obj_name)
-        subtopic_pose = "/dope/pose_{name}".format(name=obj_name)
+        subtopic_dim = "/dope/dimension_{name}".format(name=_obj_name)
+        subtopic_pose = "/dope/pose_{name}".format(name=_obj_name)
         pubtopic_captpose_tftree = "/{name}/capture_pose_tftree".format(name=node_name)
         pubtopic_captpose_moveit = "/{name}/capture_pose_moveit".format(name=node_name)
 
@@ -33,9 +34,14 @@ class Planner:
             pubtopic_captpose_moveit, PoseStamped, queue_size=5
         )
 
+        self.moveit_scene = PlanningSceneInterface()
+
         # member vars
+        self.obj_name = _obj_name
         self.obj_dim = _obj_dim
         self.obj_pose =_obj_pose
+        self.rot_b_o = R.from_quat(_obj_frame_ori)
+
 
         # rotation from palm frame (TF tree) to the base frame
         self.rot_p_b = R.from_quat([0, 1, 0, 0])
@@ -44,6 +50,8 @@ class Planner:
         while self.obj_dim is None or self.obj_pose is None:
             rospy.loginfo_once("Waiting for topics of object dimension and pose ready")
             rospy.sleep(0.5)
+
+        self.add_obj_to_moveit_scene()
 
         pass
     
@@ -125,10 +133,15 @@ class Planner:
     def calc_capture_pose_moveit(
         self, _camera_pose:list, _capt_pose:list, eul_order="", pub=True):
         pose_tftree = self.calc_capture_pose_tftree(_camera_pose, _capt_pose, eul_order, pub)
-        pose_moveit = (R.from_quat(pose_tftree[3:]) * R.from_euler("ZYX", [np.pi/4,0,0])).as_quat()
+        rospy.logdebug("capture pose in tf frame: {}".format(pose_tftree))
+        pose_moveit = np.concatenate(
+            (pose_tftree[:3], \
+            (R.from_quat(pose_tftree[3:]) * R.from_euler("ZYX", [np.pi/4,0,0])).as_quat()))
+        
         if pub:
             self.pub_capture_pose(pose_moveit, self.puber_captpose_moveit)
-        return 
+        
+        return pose_moveit
 
     
     def pub_capture_pose(self, _capt_pose:list, puber:rospy.Publisher):
@@ -142,6 +155,41 @@ class Planner:
         msg.pose.orientation.z = _capt_pose[5]
         msg.pose.orientation.w = _capt_pose[6]
         puber.publish(msg)
+
+    def add_obj_to_moveit_scene(self,timeout=5):
+        co_list = []
+        obj_pose = PoseStamped()
+        obj_pose.header.frame_id = "panda_link0"
+        
+        ori_b = (self.rot_b_o * R.from_quat(self.obj_pose[3:])).as_quat()
+        obj_pose.pose = list_to_pose(np.concatenate((self.obj_pose[:3], ori_b)))
+        self.moveit_scene.add_box(self.obj_name, obj_pose, size=abs(self.rot_b_o.apply(self.obj_dim)))
+        co_list.append(self.obj_name)
+
+        start = rospy.get_time()
+        seconds = rospy.get_time()
+        while (seconds - start < timeout) and not rospy.is_shutdown():
+            # Test if the box is in attached objects
+            # attached_objects = scene.get_attached_objects([self.obj_name])
+            extended_objects = self.moveit_scene.get_objects(co_list)
+            is_added = len(extended_objects.keys()) >= len(co_list)
+
+            # Test if the box is in the scene.
+            # Note that attaching the box will remove it from known_objects
+            # is_known = self.obj_name in scene.get_known_object_names()
+
+            # Test if we are in the expected state
+            # if (box_is_attached == is_attached) and (box_is_known == is_known):
+
+            if is_added:
+                return True
+
+            # Sleep so that we give other threads time on the processor
+            rospy.sleep(0.1)
+            seconds = rospy.get_time()
+
+        return False
+        pass
 
 
     def set_obj_pose(self, _obj_pose:list):
@@ -170,14 +218,14 @@ if __name__ == "__main__":
     # obj_pose = np.concatenate(
     #     (np.fromstring("0 0 0.9 0 3.14 0", sep=' '), np.zeros(1)))
     # obj_pose[3:] = R.from_euler("ZYX", obj_pose[3:6]).as_quat()
-    obj_pose = [0.01, -0.06, 0.91, 0.01, 1.0, 0.06, 0.01]
+    obj_pose = [0.01, -0.06, 0.91, 0.0, 1.0, 0.0, 0.0]
 
     planner = Planner(node_name, "cracker", obj_dim, obj_pose)
 
     camera_pose = np.fromstring("1.5 0 0.05 1.57 -0 -1.57", sep=' ')
     # palm pose (in object frame) for capture 
-    # capt_palm_pose = np.array([0, -0.13, 0, 0, 0, -np.pi/2]) # grasp from top
-    capt_palm_pose = np.array([-obj_dim[0]/2, 0, 0, -np.pi/2, 0, -np.pi/2]) # grasp from right
+    capt_palm_pose = np.array([0, -0.18, 0, 0, 0, -np.pi/2]) # grasp from top
+    # capt_palm_pose = np.array([-obj_dim[0]/2-0.1, 0, 0, -np.pi/2, 0, -np.pi/2]) # grasp from right
 
     while True:
         pose = planner.calc_capture_pose_tftree(
