@@ -14,7 +14,7 @@ from geometry_msgs.msg import Pose
 from scipy.spatial.transform import Rotation as R
 from moveit_commander import PlanningSceneInterface
 from moveit_commander.conversions import pose_to_list, list_to_pose
-from tf import transformation
+from tf import transformations
 
 class Planner:
     def __init__(
@@ -99,9 +99,10 @@ class Planner:
 
         obj_pose = self.obj_pose.copy()
         obj_dim = self.obj_dim.copy()
+        capt_pose = _capt_pose.copy()
 
         # rotation from object frame to EE frame (TF tree)
-        rot_o_g = R.from_quat(_capt_pose[3:]) 
+        rot_o_g = R.from_quat(capt_pose[3:]) 
 
         # rotation from camera frame to object frame
         rot_c_o = R.from_quat(obj_pose[3:])
@@ -111,24 +112,24 @@ class Planner:
 
         # transform capture pose from object frame to base frame
         ## position
-        _capt_pose[:3] = rot_c_o.apply(_capt_pose[:3]) + obj_pose[:3]
-        _capt_pose[:3] = rot_b_c.apply(_capt_pose[:3]) + self.cam_pose[:3]
+        capt_pose[:3] = rot_c_o.apply(capt_pose[:3]) + obj_pose[:3]
+        capt_pose[:3] = rot_b_c.apply(capt_pose[:3]) + self.cam_pose[:3]
         ## orientation
         rot_b_g = rot_b_c * rot_c_o * rot_o_g
-        _capt_pose[3:] = rot_b_g.as_quat()
+        capt_pose[3:] = rot_b_g.as_quat()
 
         # rot_p_g = self.rot_p_b * rot_b_c * rot_c_o * rot_o_g
         # _capt_pose[3:] = rot_p_g.as_quat()
         
         if pub:
-            self.pub_capture_pose(_capt_pose, self.puber_captpose_tftree)
+            self.pub_capture_pose(capt_pose, self.puber_captpose_tftree)
 
-        return _capt_pose
+        return capt_pose
 
 
     def calc_capture_pose_moveit(
-        self, _camera_pose:list, _capt_pose:list, eul_order="", pub=True):
-        pose_tftree = self.calc_capture_pose_tftree(_camera_pose, _capt_pose, eul_order, pub)
+        self, _capt_pose:list, pub=True):
+        pose_tftree = self.calc_capture_pose_tftree(_capt_pose, pub)
         rospy.logdebug("capture pose in tf frame: {}".format(pose_tftree))
         pose_moveit = np.concatenate(
             (pose_tftree[:3], \
@@ -157,11 +158,11 @@ class Planner:
         obj_pose = PoseStamped()
         obj_pose.header.frame_id = "panda_link0"
 
-        rot_b_c = R.from_quat(self.cam_pose)
+        rot_b_c = R.from_quat(self.cam_pose[3:])
         
         # transformation from camera frame to base frame
         ori_b = (rot_b_c * R.from_quat(self.obj_pose[3:])).as_quat()
-        pos_b = rot_b_c.apply(self.obj_pose[:3]) + self.obj_pose[:3]
+        pos_b = rot_b_c.apply(self.obj_pose[:3]) + self.cam_pose[:3]
         obj_pose.pose = list_to_pose(np.concatenate((pos_b, ori_b)))
 
         self.moveit_scene.add_box(self.obj_name, obj_pose, size=self.obj_dim)
@@ -228,13 +229,13 @@ if __name__ == "__main__":
     camera_pose = np.fromstring("1.5 0 0.05 1.57 -0 -1.57", sep=' ')
     camera_pose = np.concatenate(
         (camera_pose[:3],
-        transformation.quaternion_from_euler(camera_pose[3:], "rzyx")))
+        transformations.quaternion_from_euler(camera_pose[3], camera_pose[4], camera_pose[5], "rzyx")))
         
     # palm pose (in object frame) for capture 
     capt_palm_pose = np.array([0, -0.18, 0, 0, 0, -np.pi/2]) # grasp from top
     capt_palm_pose = np.concatenate(
         (capt_palm_pose[:3],
-        transformation.quaternion_from_euler(capt_palm_pose[3:], "rzyx")))
+        transformations.quaternion_from_euler(capt_palm_pose[3], capt_palm_pose[4], capt_palm_pose[5], "rzyx")))
     # capt_palm_pose = np.array([-obj_dim[0]/2-0.1, 0, 0, -np.pi/2, 0, -np.pi/2]) # grasp from right
 
     planner = Planner(node_name, "cracker", camera_pose ,obj_dim, obj_pose)
