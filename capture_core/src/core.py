@@ -1,3 +1,10 @@
+'''
+Description: 
+Author: Yi Lan (ylan12@sheffield.ac.uk)
+Date: 2022-08-24 07:33:13
+LastEditTime: 2022-08-24 08:24:49
+LastEditors: Yi Lan (ylan12@sheffield.ac.uk)
+'''
 #!/home/tuos/miniconda3/bin/python
 import numpy as np
 import rospy
@@ -9,6 +16,7 @@ from scipy.spatial.transform import Rotation as R
 from panda_robot import PandaArm
 from executor_moveit import Executor
 from planner import Planner
+from tf import transformation
 
 if __name__ == "__main__":
     try:
@@ -18,7 +26,16 @@ if __name__ == "__main__":
         
         rospy.init_node(node_name, log_level=rospy.DEBUG)
 
-        planner = Planner(node_name, obj_name, tf_rot_base_obj)
+        camera_pose = np.fromstring("1.5 0 0.05 1.57 -0 -1.57", sep=' ')
+        camera_pose = np.concatenate(
+            (camera_pose[:3],
+            transformation.quaternion_from_euler(camera_pose[3:], "rzyx")))
+
+        planner = Planner(node_name, obj_name, camera_pose)
+        dist_palm_finger = 0.08
+        capt_palm_pose = np.array([0, -(planner.obj_dim[1]/2 + dist_palm_finger), 0, 0, 0, -np.pi/2]) # grasp from top
+        
+
         # executor = Executor()
 
         ## cracker box pose (in camrea frame) and dimension pre-definition
@@ -26,10 +43,6 @@ if __name__ == "__main__":
         # cracker_pose = [0.01, -0.06, 0.91, 0.0, 1.0, 0.0, 0.0]
 
         # palm pose (in object frame) for capture 
-        dist_palm_finger = 0.08
-        capt_palm_pose = np.array([0, -(planner.obj_dim[1]/2 + dist_palm_finger), 0, 0, 0, -np.pi/2]) # grasp from top
-        
-        camera_pose = np.fromstring("1.5 0 0.05 1.57 -0 -1.57", sep=' ')
 
         while True:
             # pose = planner.calc_capture_pose_tftree(

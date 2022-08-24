@@ -3,7 +3,7 @@
 Description: 
 Author: Yi Lan (ylan12@sheffield.ac.uk)
 Date: 2022-08-22 10:43:49
-LastEditTime: 2022-08-22 12:28:20
+LastEditTime: 2022-08-24 08:20:11
 LastEditors: Yi Lan (ylan12@sheffield.ac.uk)
 '''
 import numpy as np
@@ -14,9 +14,13 @@ from geometry_msgs.msg import Pose
 from scipy.spatial.transform import Rotation as R
 from moveit_commander import PlanningSceneInterface
 from moveit_commander.conversions import pose_to_list, list_to_pose
+from tf import transformation
 
 class Planner:
-    def __init__(self, node_name:str, _obj_name:str, _obj_frame_ori:list, _obj_dim=None, _obj_pose=None):
+    def __init__(
+        self, node_name:str, _obj_name:str, 
+        _cam_pose:list, _obj_dim=None, _obj_pose=None):
+
         # ROS subscribers & publishers
         subtopic_dim = "/dope/dimension_{name}".format(name=_obj_name)
         subtopic_pose = "/dope/pose_{name}".format(name=_obj_name)
@@ -40,8 +44,7 @@ class Planner:
         self.obj_name = _obj_name
         self.obj_dim = _obj_dim
         self.obj_pose =_obj_pose
-        self.rot_b_o = R.from_quat(_obj_frame_ori)
-
+        self.cam_pose = _cam_pose
 
         # rotation from palm frame (TF tree) to the base frame
         self.rot_p_b = R.from_quat([0, 1, 0, 0])
@@ -75,7 +78,7 @@ class Planner:
 
 
     def calc_capture_pose_tftree(
-            self, _camera_pose:list, _capt_pose:list, eul_order="", pub=True):
+            self, _capt_pose:list, pub=True):
         '''
         Convert the capture pose (for EE frame in MoveIt) from object frame to 
         robot base frame.
@@ -83,40 +86,33 @@ class Planner:
                             of the robot.
         @param capt_pose:   float list, goal pose of ee in TF tree when 
                             performing capture w.r.t object frame.
-        @param eul_order:   string, if as None, treat the orientation of two 
-                            above params as quaternion orientation represented, 
-                            otherwise, euler angle represented with eul_order 
-                            specified
+        # @param eul_order:   string, if as None, treat the orientation of two 
+        #                     above params as quaternion orientation represented, 
+        #                     otherwise, euler angle represented with eul_order 
+        #                     specified
         @param pub:         boolean, if true, publish the capture pose to ROS
         '''
-        if eul_order != "":
-            _camera_pose = np.concatenate((
-                _camera_pose[:3],
-                R.from_euler(eul_order, _camera_pose[3:6]).as_quat()))
-            _capt_pose = np.concatenate((
-                _capt_pose[:3],
-                R.from_euler(eul_order, _capt_pose[3:6]).as_quat()))
+        # if eul_order != "":
+        #     _capt_pose = np.concatenate((
+        #         _capt_pose[:3],
+        #         R.from_euler(eul_order, _capt_pose[3:6]).as_quat()))
 
         obj_pose = self.obj_pose.copy()
         obj_dim = self.obj_dim.copy()
 
         # rotation from object frame to EE frame (TF tree)
         rot_o_g = R.from_quat(_capt_pose[3:]) 
-        #TODO [ ]: transform EE goal pose from TF tree frame to MoveIt frame 
-        #          and update rot_o_g
 
         # rotation from camera frame to object frame
         rot_c_o = R.from_quat(obj_pose[3:])
 
         # rotation from robot base frame to camera frame
-        rot_b_c = R.from_quat(_camera_pose[3:])
+        rot_b_c = R.from_quat(self.cam_pose[3:])
 
         # transform capture pose from object frame to base frame
         ## position
-        _capt_pose[:3] = rot_c_o.apply(_capt_pose[:3])
-        _capt_pose[:3] += obj_pose[:3]
-        _capt_pose[:3] = rot_b_c.apply(_capt_pose[:3])
-        _capt_pose[:3] += _camera_pose[:3]
+        _capt_pose[:3] = rot_c_o.apply(_capt_pose[:3]) + obj_pose[:3]
+        _capt_pose[:3] = rot_b_c.apply(_capt_pose[:3]) + self.cam_pose[:3]
         ## orientation
         rot_b_g = rot_b_c * rot_c_o * rot_o_g
         _capt_pose[3:] = rot_b_g.as_quat()
@@ -160,10 +156,15 @@ class Planner:
         co_list = []
         obj_pose = PoseStamped()
         obj_pose.header.frame_id = "panda_link0"
+
+        rot_b_c = R.from_quat(self.cam_pose)
         
-        ori_b = (self.rot_b_o * R.from_quat(self.obj_pose[3:])).as_quat()
-        obj_pose.pose = list_to_pose(np.concatenate((self.obj_pose[:3], ori_b)))
-        self.moveit_scene.add_box(self.obj_name, obj_pose, size=abs(self.rot_b_o.apply(self.obj_dim)))
+        # transformation from camera frame to base frame
+        ori_b = (rot_b_c * R.from_quat(self.obj_pose[3:])).as_quat()
+        pos_b = rot_b_c.apply(self.obj_pose[:3]) + self.obj_pose[:3]
+        obj_pose.pose = list_to_pose(np.concatenate((pos_b, ori_b)))
+
+        self.moveit_scene.add_box(self.obj_name, obj_pose, size=self.obj_dim)
         co_list.append(self.obj_name)
 
         start = rospy.get_time()
@@ -209,6 +210,9 @@ class Planner:
         self.obj_dim = _obj_dim
 
 
+    def set_cam_pose(self, _cam_pose:list):
+        self.cam_pose = _cam_pose
+
 if __name__ == "__main__":
     node_name = "capture_core_planner"
     rospy.init_node(node_name, log_level=rospy.DEBUG)
@@ -220,15 +224,23 @@ if __name__ == "__main__":
     # obj_pose[3:] = R.from_euler("ZYX", obj_pose[3:6]).as_quat()
     obj_pose = [0.01, -0.06, 0.91, 0.0, 1.0, 0.0, 0.0]
 
-    planner = Planner(node_name, "cracker", obj_dim, obj_pose)
 
     camera_pose = np.fromstring("1.5 0 0.05 1.57 -0 -1.57", sep=' ')
+    camera_pose = np.concatenate(
+        (camera_pose[:3],
+        transformation.quaternion_from_euler(camera_pose[3:], "rzyx")))
+        
     # palm pose (in object frame) for capture 
     capt_palm_pose = np.array([0, -0.18, 0, 0, 0, -np.pi/2]) # grasp from top
+    capt_palm_pose = np.concatenate(
+        (capt_palm_pose[:3],
+        transformation.quaternion_from_euler(capt_palm_pose[3:], "rzyx")))
     # capt_palm_pose = np.array([-obj_dim[0]/2-0.1, 0, 0, -np.pi/2, 0, -np.pi/2]) # grasp from right
+
+    planner = Planner(node_name, "cracker", camera_pose ,obj_dim, obj_pose)
 
     while True:
         pose = planner.calc_capture_pose_tftree(
-            camera_pose, capt_palm_pose, eul_order="ZYX")
+            camera_pose, capt_palm_pose)
         rospy.logdebug("capture pose in tf tree: {}".format(pose))
         rospy.sleep(0.5)
