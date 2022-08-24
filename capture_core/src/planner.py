@@ -24,11 +24,9 @@ class Planner:
         # ROS subscribers & publishers
         subtopic_dim = "/dope/dimension_{name}".format(name=_obj_name)
         subtopic_pose = "/dope/pose_{name}".format(name=_obj_name)
-        pubtopic_captpose_tftree = "/{name}/capture_pose_tftree".format(name=node_name)
-        pubtopic_captpose_moveit = "/{name}/capture_pose_moveit".format(name=node_name)
+        pubtopic_captpose_tftree = "/{name}/{obj}_capture_pose_tftree".format(name=node_name, obj=_obj_name)
+        pubtopic_captpose_moveit = "/{name}/{obj}_capture_pose_moveit".format(name=node_name, obj=_obj_name)
 
-        self.suber_dim = rospy.Subscriber(
-            subtopic_dim, String, self.callback_dim, queue_size=1)
         self.suber_pose = rospy.Subscriber(
             subtopic_pose, PoseStamped, self.callback_objpose, queue_size=1)
         self.puber_captpose_tftree = rospy.Publisher(
@@ -37,6 +35,10 @@ class Planner:
         self.puber_captpose_moveit = rospy.Publisher(
             pubtopic_captpose_moveit, PoseStamped, queue_size=5
         )
+        self.suber_dim = None
+        if _obj_dim is None:
+            self.suber_dim = rospy.Subscriber(
+                subtopic_dim, String, self.callback_dim, queue_size=1)
 
         self.moveit_scene = PlanningSceneInterface()
 

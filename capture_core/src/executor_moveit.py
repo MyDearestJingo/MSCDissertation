@@ -55,8 +55,7 @@ class Executor:
         ## BEGIN_SUB_TUTORIAL setup
         ##
         ## First initialize `moveit_commander`_ and a `rospy`_ node:
-        moveit_commander.roscpp_initialize(sys.argv)
-        rospy.init_node("move_group_python_interface_tutorial", anonymous=True)
+        
 
         ## Instantiate a `RobotCommander`_ object. Provides information such as the robot's
         ## kinematic model and the robot's current joint states
@@ -121,11 +120,6 @@ class Executor:
         pass
     
     def move_ee_to_cartesian_pose(self, _goal):
-        # Copy class variables to local variables to make the web tutorials more clear.
-        # In practice, you should use the class variables directly unless you have a good
-        # reason not to.
-        move_group = self.move_group
-
         ## BEGIN_SUB_TUTORIAL plan_to_pose
         ##
         ## Planning to a Pose Goal
@@ -219,6 +213,7 @@ class Executor:
 
         pass
 
+
     def open_gripper(self):
         posture = JointTrajectory()
         posture.joint_names = ["", ""]
@@ -228,8 +223,8 @@ class Executor:
         posture.points = [JointTrajectoryPoint()]
         posture.points[0].positions = [0.04, 0.04]
         posture.points[0].velocities = [0.3, 0.3]
+        posture.points[0].effort = [10,10]
         posture.points[0].time_from_start = rospy.Duration(0.5)
-
 
         return posture
         
@@ -241,8 +236,11 @@ class Executor:
         posture.joint_names[1] = "panda_finger_joint2"
 
         posture.points = [JointTrajectoryPoint()]
-        posture.points[0].positions = [0.023, 0.023]
+        posture.points[0].positions = [0.022, 0.022]
+        # posture.points[0].positions = [0.0, 0.0]
         posture.points[0].velocities = [0.1, 0.1]
+        posture.points[0].effort = [10,10]
+
 
         # posture.points[0].effort = [10,10]
 
@@ -311,7 +309,7 @@ def init_scene(obj_name:str, scene:moveit_commander.PlanningSceneInterface, time
 
     ground_pose = PoseStamped()
     ground_pose.header.frame_id = "panda_link0"
-    ground_pose.pose = list_to_pose([0.0, 0.0, 0, 0, 0, 0, 1])
+    ground_pose.pose = list_to_pose([0, 0, 0, 0, 0, 0, 1])
     scene.add_plane("ground", ground_pose)
     co_list.append("ground")
 
@@ -341,6 +339,8 @@ def init_scene(obj_name:str, scene:moveit_commander.PlanningSceneInterface, time
 
 
 if __name__  == "__main__":
+    moveit_commander.roscpp_initialize(sys.argv)
+    rospy.init_node("move_group_python_interface_tutorial", anonymous=True)
 
     goal = np.fromstring(
         # "0.59332084 0.07 0.11013612 -0.5 0.5 -0.5 -0.5",

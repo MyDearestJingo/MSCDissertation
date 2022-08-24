@@ -6,10 +6,13 @@ Date: 2022-08-24 07:33:13
 LastEditTime: 2022-08-24 08:24:49
 LastEditors: Yi Lan (ylan12@sheffield.ac.uk)
 '''
+import queue
 import numpy as np
 import rospy
+import sys
 from std_msgs.msg import String
 from actionlib_msgs.msg import GoalStatusArray, GoalStatus
+import moveit_commander
 from moveit_commander import PlanningSceneInterface
 from moveit_msgs.msg import MoveGroupActionResult
 from geometry_msgs.msg import PoseStamped
@@ -22,53 +25,81 @@ from moveit_commander.conversions import pose_to_list, list_to_pose
 
 if __name__ == "__main__":
     node_name = "capture_core"
+
+    # --- camera definition --- #
+    camera_pose = np.fromstring("1.5 0 0.05 1.57 -0 -1.57", sep=' ')
+    camera_pose = np.concatenate(
+        (camera_pose[:3],
+        transformations.quaternion_from_euler(camera_pose[3], camera_pose[4], camera_pose[5], "rzyx")))
+
+
+    # --- task definition --- #    
     obj_name = "cracker"
+    obj_dim = np.array([16.403600692749023,21.343700408935547,7.179999828338623])/100
+
+    # pick up pose w.r.t object frame
+    dist_palm_finger = 0.08
+    capt_palm_pose = np.array([0, -(obj_dim[1]/2 + dist_palm_finger), 0, 0, 0, -np.pi/2]) # grasp from top
+    capt_palm_pose = np.concatenate(
+        (capt_palm_pose[:3],
+        transformations.quaternion_from_euler(capt_palm_pose[3], capt_palm_pose[4], capt_palm_pose[5], "rzyx")))
+    rospy.logdebug("capture palm pose: {}".format(capt_palm_pose))
+    
+    # place pose w.r.t world frame
+    place_pose = np.array([0, 0.5, obj_dim[1]/2+0.01, 0, -np.pi/2, 0]) # rxyz
+    rot_b_o = R.from_euler('ZYX', [-np.pi/2, 0, -np.pi/2])
+    ori_b = (rot_b_o * R.from_euler('XYZ', place_pose[3:])).as_quat()
+    place_pose = np.concatenate((place_pose[:3], ori_b))
+
+    place_pose_msg = PoseStamped()
+    place_pose_msg.header.frame_id = "panda_link0"
+    place_pose_msg.pose = list_to_pose(place_pose)
+
+
+    # --- ROS related initialization --- #
+    rospy.init_node(node_name, anonymous=True, log_level=rospy.DEBUG)
+    puber_camera_pose = rospy.Publisher(
+        "/{_node_name}/debug_camera_pose".format(_node_name=node_name), 
+        PoseStamped, queue_size=5)
+
+    puber_place_pose = rospy.Publisher(
+        "/{_node_name}/{_obj_name}_place_pose".format(_node_name=node_name, _obj_name=obj_name),
+        PoseStamped, queue_size=5)
+    puber_place_pose.publish(place_pose_msg)
+
+    moveit_commander.roscpp_initialize(sys.argv)
     scene = PlanningSceneInterface()
     
-    rospy.init_node(node_name, log_level=rospy.DEBUG)
 
-    # for debug
-    puber_camera_pose = rospy.Publisher("/capture_core/debug_camera_pose", PoseStamped, queue_size=5)
+    ground_pose = PoseStamped()
+    ground_pose.header.frame_id = "panda_link0"
+    ground_pose.pose = list_to_pose([0, 0, -0.1, 0, 0, 0, 1])
+    scene.add_box("ground", ground_pose, size=(10,10,0.2))
+    
+    # ground_pose = PoseStamped()
+    # ground_pose.header.frame_id = "panda_link0"
+    # ground_pose.pose = list_to_pose([0, 0, 0, 0, 0, 0, 1])
+    # scene.add_plane("ground", ground_pose)
 
 
     try:
+        planner = Planner(node_name, obj_name, camera_pose, _obj_dim=obj_dim)
+        executor = Executor()
 
-        camera_pose = np.fromstring("1.5 0 0.05 1.57 -0 -1.57", sep=' ')
-        camera_pose = np.concatenate(
-            (camera_pose[:3],
-            transformations.quaternion_from_euler(camera_pose[3], camera_pose[4], camera_pose[5], "rzyx")))
+        goal = planner.calc_capture_pose_moveit(capt_palm_pose)
+        rospy.logdebug("capture pose in moveit ee frame: {}".format(goal))
 
-        planner = Planner(node_name, obj_name, camera_pose)
-        dist_palm_finger = 0.08
-        capt_palm_pose = np.array([0, -(planner.obj_dim[1]/2 + dist_palm_finger), 0, 0, 0, -np.pi/2]) # grasp from top
-        capt_palm_pose = np.concatenate(
-            (capt_palm_pose[:3],
-            transformations.quaternion_from_euler(capt_palm_pose[3], capt_palm_pose[4], capt_palm_pose[5], "rzyx")))
-        rospy.logdebug("capture palm pose: {}".format(capt_palm_pose))
+        rospy.logdebug("Objects in planning scene now: {}".\
+            format(executor.scene.get_known_object_names()))
+        rospy.loginfo("Start pick-up task")
+        executor.pick(goal, obj_name)
+        
+        rospy.loginfo("Start place task")
+        executor.place(place_pose, obj_name)
 
-
-        # executor = Executor()
-
-        ## cracker box pose (in camrea frame) and dimension pre-definition
-        # cracker_dim = np.fromstring("0.158 0.21 0.06", sep=' ')
-        # cracker_pose = [0.01, -0.06, 0.91, 0.0, 1.0, 0.0, 0.0]
-
-        # palm pose (in object frame) for capture 
-
-
-        while True:
-            # --- DEBUG: check camera pose in RViz --- # 
-            cam_pose_msg = PoseStamped()
-            cam_pose_msg.header.frame_id = "panda_link0"
-            cam_pose_msg.pose = list_to_pose(camera_pose)
-            puber_camera_pose.publish(cam_pose_msg)
-
-            # pose = planner.calc_capture_pose_tftree(
-            #     camera_pose, capt_palm_pose, eul_order="ZYX")
-            pose = planner.calc_capture_pose_moveit(capt_palm_pose)
-            rospy.logdebug("capture pose in moveit ee frame: {}".format(pose))
-            rospy.sleep(0.5)
+        input("Press Enter to continue...")
         pass
+
     finally:
         scene.clear()
         rospy.loginfo("MoveIt scene clear")
