@@ -139,7 +139,7 @@
           <surface>
             <friction>
               <ode>
-                <mu>10</mu>
+                <mu>1</mu>
                 <!-- <mu2>50</mu2> -->
               </ode>
             </friction>
@@ -185,7 +185,7 @@
     </model>
 
     <model name='cracker_box'>
-      <link name='link'>
+      <link name='cracker_box_link'>
         <inertial>
           <mass>0.411</mass>
           <inertia>
@@ -231,7 +231,14 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>0.6 0.0 0.0 0 0 -0 0</pose>
+      <plugin name="move_unilinear" filename="libmove_unilinear.so">
+        <link_name>cracker_box_link</link_name>
+        <init_pose>0.6 -0.8 0.005 0 0 0</init_pose> <!-- rpy -->
+        <direction>0 1 0</direction>
+        <vel>0.1</vel>
+        <max_distance>2.0</max_distance>
+      </plugin>
+      <pose>0.6 0.0 0.005 0 0 -0 0</pose>
       <enable_wind>0</enable_wind>
     </model>
 
