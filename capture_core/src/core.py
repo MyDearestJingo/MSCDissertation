@@ -39,7 +39,8 @@ if __name__ == "__main__":
 
     # pick up pose w.r.t object frame
     dist_palm_finger = 0.08
-    capt_palm_pose = np.array([0, -(obj_dim[1]/2 + dist_palm_finger), 0, 0, 0, -np.pi/2]) # grasp from top
+    # capt_palm_pose = np.array([0, -(obj_dim[1]/2 + dist_palm_finger), 0, 0, 0, -np.pi/2]) # grasp from top
+    capt_palm_pose = np.array([-obj_dim[0]/2-dist_palm_finger, -0.05, 0, -np.pi/2, 0, -np.pi/2]) # grasp from right
     capt_palm_pose = np.concatenate(
         (capt_palm_pose[:3],
         transformations.quaternion_from_euler(capt_palm_pose[3], capt_palm_pose[4], capt_palm_pose[5], "rzyx")))
@@ -86,16 +87,24 @@ if __name__ == "__main__":
         planner = Planner(node_name, obj_name, camera_pose, _obj_dim=obj_dim)
         executor = Executor()
 
-        goal = planner.calc_capture_pose_moveit(capt_palm_pose)
-        rospy.logdebug("capture pose in moveit ee frame: {}".format(goal))
 
-        rospy.logdebug("Objects in planning scene now: {}".\
-            format(executor.scene.get_known_object_names()))
-        rospy.loginfo("Start pick-up task")
-        executor.pick(goal, obj_name, obj_dim[2]-0.02)
+        ''' Grasp a static box'''
+        # goal = planner.calc_capture_pose_moveit(capt_palm_pose)
+        # rospy.logdebug("capture pose in moveit ee frame: {}".format(goal))
+        # rospy.logdebug("Objects in planning scene now: {}".\
+        #     format(executor.scene.get_known_object_names()))
+        # rospy.loginfo("Start pick-up task")
+        # executor.pick(goal, obj_name, obj_dim[2]-0.03)
         
-        rospy.loginfo("Start place task")
-        executor.place(place_pose, obj_name)
+        # rospy.loginfo("Start place task")
+        # executor.place(place_pose, obj_name)
+
+        ''' Wait a moving box'''
+        while not rospy.is_shutdown():
+            pose_pred = planner.predict_trajectory(_update_scene=True)
+            goal = planner.calc_capture_pose_moveit(capt_palm_pose, _obj_pose=pose_pred)
+            rospy.sleep(0.1)
+            # executor.move_ee_to_cartesian_pose(goal)
 
         input("Press Enter to continue...")
         pass

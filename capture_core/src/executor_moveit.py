@@ -1,9 +1,6 @@
 #!/home/tuos/miniconda3/bin/python
 
-from inspect import isdatadescriptor
 import sys
-import copy
-from tokenize import group
 import rospy
 import numpy as np
 import moveit_commander
@@ -64,7 +61,7 @@ class Executor:
         ## Instantiate a `PlanningSceneInterface`_ object.  This provides a remote interface
         ## for getting, setting, and updating the robot's internal understanding of the
         ## surrounding world:
-        scene = moveit_commander.PlanningSceneInterface()
+        scene = moveit_commander.PlanningSceneInterface(synchronous=True)
 
         ## Instantiate a `MoveGroupCommander`_ object.  This object is an interface
         ## to a planning group (group of joints).  In this tutorial the group is the primary
