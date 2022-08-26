@@ -3,7 +3,7 @@
 Description: 
 Author: Yi Lan (ylan12@sheffield.ac.uk)
 Date: 2022-08-22 10:43:49
-LastEditTime: 2022-08-24 08:20:11
+LastEditTime: 2022-08-26 12:56:34
 LastEditors: Yi Lan (ylan12@sheffield.ac.uk)
 '''
 import numpy as np
@@ -15,6 +15,7 @@ from scipy.spatial.transform import Rotation as R
 from moveit_commander import PlanningSceneInterface
 from moveit_commander.conversions import pose_to_list, list_to_pose
 from tf import transformations
+import quaternion as quat
 
 class Planner:
     def __init__(
@@ -46,6 +47,7 @@ class Planner:
         self.obj_name = _obj_name
         self.obj_dim = _obj_dim
         self.obj_pose =_obj_pose
+        self.obj_pose_ts = None # float time stamp of self.obj_pose
         self.cam_pose = _cam_pose
 
         # rotation from palm frame (TF tree) to the base frame
@@ -73,6 +75,7 @@ class Planner:
             data.pose.orientation.z,
             data.pose.orientation.w
         ])
+        self.obj_pose_ts = data.header.stamp.secs + data.header.stamp.nsecs*1e-9
 
     def callback_dim(self, data):
         str = data.data
@@ -154,6 +157,49 @@ class Planner:
         msg.pose.orientation.z = _capt_pose[5]
         msg.pose.orientation.w = _capt_pose[6]
         puber.publish(msg)
+
+
+    def predict_trajectory(self, _pred_horizon=5):
+        '''
+        # Predict the object trajectory for a set time horizon and create an 
+        # occupancy zone in MoveIt scene.
+
+        # @Param _pred_horizon: a float, specify the prediction horizon in seconds
+        '''
+
+        lin_vel = np.zeros(3)   # velocity vector in 3D
+        ang_vel = np.zeros(3)   # angular velocities for xyz axes
+
+        ## --- reserve space --- ##
+        # sampling from DOPE observation for pose and linear velocities prediction
+        # ...
+        pose_pre = self.obj_pose.copy()
+        pose_ts = self.obj_pose_ts.copy()
+
+        ## --- pose prediction --- ##
+        curr_t = rospy.Time.now()
+        curr_t = curr_t.secs + curr_t.nsces * 1e-9
+        t_diff = curr_t - pose_ts
+
+        pose_pred = np.zeros(7)
+        pose_pred[:3] = (t_diff + _pred_horizon) * lin_vel + pose_pre[:3]
+
+        delta_ang = np.flip((t_diff + _pred_horizon) * ang_vel) # convert to zyx order
+        delta_ori = quat.from_euler_angles(delta_ang) # convert to quat
+
+        ori_pre = np.concatenate(pose_pre[6], pose_pre[3:5]) # convert to wxyz
+        ori_pre = quat.from_float_array(ori_pre)
+        ori_pred = quat.as_float_array(ori_pre * delta_ori)
+        pose_pred[3:] = np.concatenate(ori_pred[4:6], ori_pred[3]) # convert to xyzw
+
+        ## --- reserve space --- ##
+        # create occupancy zone in MoveIt planning scene
+        # ...
+
+
+
+
+
 
     def add_obj_to_moveit_scene(self,timeout=5):
         co_list = []

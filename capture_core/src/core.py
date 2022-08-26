@@ -3,7 +3,7 @@
 Description: 
 Author: Yi Lan (ylan12@sheffield.ac.uk)
 Date: 2022-08-24 07:33:13
-LastEditTime: 2022-08-24 08:24:49
+LastEditTime: 2022-08-24 18:20:20
 LastEditors: Yi Lan (ylan12@sheffield.ac.uk)
 '''
 import queue
@@ -92,7 +92,7 @@ if __name__ == "__main__":
         rospy.logdebug("Objects in planning scene now: {}".\
             format(executor.scene.get_known_object_names()))
         rospy.loginfo("Start pick-up task")
-        executor.pick(goal, obj_name)
+        executor.pick(goal, obj_name, obj_dim[2]-0.02)
         
         rospy.loginfo("Start place task")
         executor.place(place_pose, obj_name)

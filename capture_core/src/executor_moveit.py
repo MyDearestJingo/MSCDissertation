@@ -155,7 +155,7 @@ class Executor:
         return all_close(goal_msg, current_pose, 0.01)
 
     
-    def pick(self, _capt_pose:list, obj_name:str):
+    def pick(self, _capt_pose:list, obj_name:str, finger_dist:float):
         '''
         Build a moveit_msgs::Grasp msg for capturing object at _capt_pose
         @param _capt_pose: float list, includes capture position and orientation (in quaternion)
@@ -181,7 +181,7 @@ class Executor:
         grasp_msg.pre_grasp_posture = self.open_gripper()
 
         # close gripper
-        grasp_msg.grasp_posture = self.close_gripper()
+        grasp_msg.grasp_posture = self.close_gripper(finger_dist)
 
         # self.move_group.setSupportSurfaceName("ground");
 
@@ -229,14 +229,14 @@ class Executor:
         return posture
         
 
-    def close_gripper(self):
+    def close_gripper(self, dist):
         posture = JointTrajectory()
         posture.joint_names = ["", ""]
         posture.joint_names[0] = "panda_finger_joint1"
         posture.joint_names[1] = "panda_finger_joint2"
 
         posture.points = [JointTrajectoryPoint()]
-        posture.points[0].positions = [0.022, 0.022]
+        posture.points[0].positions = [dist/2, dist/2]
         # posture.points[0].positions = [0.0, 0.0]
         posture.points[0].velocities = [0.1, 0.1]
         posture.points[0].effort = [10,10]
@@ -352,6 +352,7 @@ if __name__  == "__main__":
     # goal[3:] = (R.from_euler("ZYX", [0, np.pi/2,0])*R.from_quat(goal[3:])).as_quat()
     # goal[3:] = (R.from_euler("ZYX", [np.pi/4,0,0])*R.from_quat(goal[3:])).as_quat()
     goal[3:] = (R.from_quat(goal[3:]) * R.from_euler("ZYX", [np.pi/4,0,0])).as_quat()
+    finger_dist = 0.0717 - 0.02
     # executor.move_ee_to_cartesian_pose(goal)
 
     # place_pose = np.array([0, 0.5, 0.15, 0, 0, 0,1])
@@ -371,7 +372,7 @@ if __name__  == "__main__":
             exit()
 
         rospy.loginfo("Start pick-up task")
-        executor.pick(goal, obj_name)
+        executor.pick(goal, obj_name, finger_dist)
         rospy.logdebug("Objects in planning scene now: {}".\
             format(executor.scene.get_known_object_names()))
         rospy.loginfo("Start place task")
