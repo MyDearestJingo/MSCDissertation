@@ -19,6 +19,7 @@ from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
 from panda_robot import PandaArm
 from executor_moveit import Executor
+from executor_moveit import all_close
 from planner import Planner
 from tf import transformations
 from moveit_commander.conversions import pose_to_list, list_to_pose
@@ -82,11 +83,39 @@ if __name__ == "__main__":
     # ground_pose.pose = list_to_pose([0, 0, 0, 0, 0, 0, 1])
     # scene.add_plane("ground", ground_pose)
 
+    def capture_moving(_planner:Planner, _executor:Executor, _calm_pose:list, _finger_dist:float):
+        pred_horizon = 7
+        # input("Press Enter to start interception")
+        _planner.update_moveit_scene()
+        _planner.moveit_scene.clear()
+        pose_pred,_ = _planner.predict_trajectory(pred_horizon, _update_scene=False)
+        goal = _planner.calc_capture_pose_moveit(_calm_pose, _obj_pose=pose_pred)
+        _executor.move_to_grasp_pose(goal)
+        while not rospy.is_shutdown():
+            # executor.move_ee_to_cartesian_pose(goal)
+            # break
+            if all_close(pose_pred[:3].tolist(), _planner.obj_pose[:3].tolist(), 0.02) == True:
+                rospy.loginfo("Target arrives perdicted position")
+                rospy.logdebug("prediction: {}".format(pose_pred))
+                rospy.logdebug("current pose: {}".format(_planner.obj_pose))
+                
+                _executor.grasp_and_retreat('cracker', _calm_pose, _finger_dist)
+                _planner.update_moveit_scene()
+                _planner.moveit_scene.attach_object()
+                standby_pose = pose_pred
+                standby_pose[2] = 0.5
+                _executor.move_ee_to_cartesian_pose(standby_pose)   # failed since no consideration of objet collision
+                break
+            rospy.sleep(0.1)
+            pass
+        rospy.loginfo("Grasp complete")
 
     try:
         planner = Planner(node_name, obj_name, camera_pose, _obj_dim=obj_dim)
         executor = Executor()
 
+        input("=== Press Enter to start")
+        # planner.moveit_scene.clear()
 
         ''' Grasp a static box'''
         # goal = planner.calc_capture_pose_moveit(capt_palm_pose)
@@ -95,21 +124,31 @@ if __name__ == "__main__":
         #     format(executor.scene.get_known_object_names()))
         # rospy.loginfo("Start pick-up task")
         # executor.pick(goal, obj_name, obj_dim[2]-0.03)
+        # executor.pick_arrival_only(goal)
         
         # rospy.loginfo("Start place task")
         # executor.place(place_pose, obj_name)
 
         ''' Wait a moving box'''
-        while not rospy.is_shutdown():
-            pose_pred = planner.predict_trajectory(_update_scene=True)
-            goal = planner.calc_capture_pose_moveit(capt_palm_pose, _obj_pose=pose_pred)
-            rospy.sleep(0.1)
-            # executor.move_ee_to_cartesian_pose(goal)
+        # pred_horizon = 7
+        # input("Press Enter to start interception")
+        # while not rospy.is_shutdown():
+        #     pose_pred,_ = planner.predict_trajectory(pred_horizon, _update_scene=True)
+        #     goal = planner.calc_capture_pose_moveit(capt_palm_pose, _obj_pose=pose_pred)
+        #     planner.update_moveit_scene()
+        #     # executor.move_ee_to_cartesian_pose(goal)
+        #     executor.move_to_grasp_pose(goal)
+        #     break
+        #     rospy.sleep(0.1)
 
-        input("Press Enter to continue...")
-        pass
+        # input("Press Enter to continue...")
+        # pass
+
+        '''Grasp a moving box'''
+        capture_moving(planner, executor, capt_palm_pose, obj_dim[2]-0.03)
 
     finally:
         scene.clear()
+        executor.robot.get_gripper().open()
         rospy.loginfo("MoveIt scene clear")
         pass

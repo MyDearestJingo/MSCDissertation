@@ -90,7 +90,7 @@ class Planner:
 
 
     def calc_capture_pose_tftree(
-            self, _capt_pose:list, _obj_pose=None, pub=True):
+            self, _capt_pose:list, _obj_pose=None, pub=True, _update_scene=True):
         '''
         Convert the capture pose (for EE frame in MoveIt) from object frame to 
         robot base frame.
@@ -105,7 +105,7 @@ class Planner:
             obj_pose = self.obj_pose.copy()
         else:
             obj_pose = _obj_pose.copy()
-        rospy.logdebug("_obj_pose: {}".format(obj_pose))
+
         capt_pose = _capt_pose.copy()
 
         # rotation from object frame to EE frame (TF tree)
@@ -128,6 +128,7 @@ class Planner:
         # rot_p_g = self.rot_p_b * rot_b_c * rot_c_o * rot_o_g
         # _capt_pose[3:] = rot_p_g.as_quat()
         
+        self.update_moveit_scene()
         if pub:
             pose_msg = PoseStamped()
             pose_msg.header.frame_id = "panda_link0"
@@ -140,8 +141,8 @@ class Planner:
 
 
     def calc_capture_pose_moveit(
-        self, _capt_pose:list, _obj_pose=None, pub=True):
-        pose_tftree = self.calc_capture_pose_tftree(_capt_pose, _obj_pose, pub)
+        self, _capt_pose:list, _obj_pose=None, pub=True, _update_scene=True):
+        pose_tftree = self.calc_capture_pose_tftree(_capt_pose, _obj_pose, pub, _update_scene)
         pose_moveit = np.concatenate(
             (pose_tftree[:3], \
             (R.from_quat(pose_tftree[3:]) * R.from_euler("ZYX", [np.pi/4,0,0])).as_quat()))
@@ -166,74 +167,92 @@ class Planner:
         puber.publish(msg)
 
 
-    def predict_trajectory(self, _pred_horizon=5, _update_scene=False):
+    def predict_trajectory(self, _pred_horizon, _update_scene=False):
         '''
         Predict the object trajectory for a set time horizon and create an 
         occupancy zone in MoveIt scene.
 
         @Param _pred_horizon: a float, specify the prediction horizon in seconds
+        
+        @Param _update_scene: a boolean, default as false. If True, the MoveIt planning
+                              scene would be updated according to prediction
+
+        @Return pose_pred: a float list, includes predicted position and orientation
+                           w.r.t the camera frame
         '''
 
+        # dynamics state parameters w.r.t camera frame
         lin_vel = np.zeros(3)   # velocity vector in 3D
         ang_vel = np.zeros(3)   # angular velocities for xyz axes
 
         # for test
-        lin_vel[1] = 0.1
+        lin_vel[0] = 0.03    # w.r.t camera frame
         # [END] for test
 
         ## --- reserve space --- ##
         # sampling from DOPE observation for pose and linear velocities prediction
         # ...
-        pose_pre = np.ones(7)
-        pose_pre[:3] = self.rot_b_c.apply(self.obj_pose[:3]) + self.cam_pose[:3]
-        pose_pre[3:] = (self.rot_b_c*R.from_quat(self.obj_pose[3:])).as_quat()
-        pose_ts = self.obj_pose_ts
+
+        pose_prev = np.ones(7)
+        pose_prev = self.obj_pose.copy()
+
+        # # convert to robot base frame
+        # pose_prev[:3] = self.rot_b_c.apply(pose_prev[:3]) + self.cam_pose[:3]
+        # pose_prev[3:] = (self.rot_b_c*R.from_quat(pose_prev[3:])).as_quat()
+
 
         ## --- pose prediction --- ##
-        curr_t = rospy.Time.now()
-        curr_t = curr_t.secs + curr_t.nsecs * 1e-9
-        t_diff = curr_t - pose_ts
+        # t_diff = rospy.Time.now().to_sec() - self.obj_pose_ts
+        horizon = rospy.Time.now().to_sec() - self.obj_pose_ts + _pred_horizon
+        pred_pt = rospy.Time.now().to_sec() + horizon
 
         pose_pred = np.zeros(7)
-        pose_pred[:3] = (t_diff + _pred_horizon) * lin_vel + pose_pre[:3]
+        pose_pred[:3] = horizon * lin_vel + pose_prev[:3]
 
-        delta_ang = np.flip((t_diff + _pred_horizon) * ang_vel) # convert to zyx order
-        delta_ori = quat.from_euler_angles(delta_ang) # convert to quat
+        # delta_ang = np.flip(horizon * ang_vel) # convert to zyx order
+        # delta_ori = quat.from_euler_angles(delta_ang) # convert to quat
         
-        ori_pre = np.zeros(4)
+        # ori_prev = np.zeros(4)
 
-        # convert to wxyz
-        ori_pre[0] = pose_pre[6]
-        ori_pre[1:] = pose_pre[3:6]
+        # # convert to wxyz
+        # ori_prev[0] = pose_prev[6]
+        # ori_prev[1:] = pose_prev[3:6]
 
-        # ori_pre = np.concatenate(np.array([pose_pre[6]]), pose_pre[3:5]) # convert to wxyz
-        ori_pre = quat.from_float_array(ori_pre)
-        ori_pred = quat.as_float_array(ori_pre * delta_ori)
+        # # ori_pre = np.concatenate(np.array([pose_pre[6]]), pose_pre[3:5]) # convert to wxyz
+        # ori_prev = quat.from_float_array(ori_prev)
+        # ori_pred = quat.as_float_array(ori_prev * delta_ori)
 
-        # convert to xyzw
-        pose_pred[3:6] = ori_pred[0:3]
-        pose_pred[6] = ori_pred[3] 
-        # pose_pred[3:] = np.concatenate(ori_pred[4:6], np.array([ori_pred[3]])) # convert to xyzw
+        # # convert to xyzw
+        # pose_pred[3:6] = ori_pred[0:3]
+        # pose_pred[6] = ori_pred[3] 
+
+        delta_ori = R.from_euler('XYZ', ang_vel * horizon)
+        pose_pred[3:] = (delta_ori * R.from_quat(pose_prev[3:])).as_quat()
 
         ## --- reserve space --- ##
         # create occupancy zone in MoveIt planning scene
         # ...
 
         # update moveit scene
+        pose_pred_tf = np.zeros(7)
         if _update_scene:
-            obj_name = self.obj_name+"_pred"
+            obj_name = self.obj_name + "_pred"
+            pose_pred_tf[:3] = self.rot_b_c.apply(pose_pred[:3]) + self.cam_pose[:3]
+            pose_pred_tf[3:] = (self.rot_b_c*R.from_quat(pose_pred[3:])).as_quat()
 
             if len(self.moveit_scene.get_objects([obj_name])) != 0:
-                self.update_moveit_scene(obj_name, pose_pred)
+                self.update_moveit_scene(obj_name, pose_pred_tf)
 
             else:
-                self.add_obj_to_moveit_scene(obj_name, pose_pred)
+                self.add_obj_to_moveit_scene(obj_name, pose_pred_tf)
+
         pose_msg = PoseStamped()
         pose_msg.header.frame_id = "panda_link0"
-        pose_msg.pose = list_to_pose(pose_pred)
+        pose_msg.pose = list_to_pose(pose_pred_tf)
         self.puber_obj_pose_pred.publish(pose_msg)
+        # rospy.logdebug("Prediction has been published to {}".format(self.puber_obj_pose_pred.name))
 
-        return pose_pred
+        return pose_pred,pred_pt
 
     
     def update_moveit_scene(self, _obj_name=None, _pose=None):
@@ -272,7 +291,7 @@ class Planner:
             is_added = len(extended_objects.keys()) >= len(co_list)
 
             if is_added:
-                rospy.logdebug("MoveIt planning scene has updated for object {}".format(_obj_name))
+                rospy.logdebug("MoveIt planning scene has updated for object {} at {}".format(_obj_name, pose_to_list(obj_pose.pose)))
                 return True
 
             # Sleep so that we give other threads time on the processor
@@ -354,27 +373,39 @@ if __name__ == "__main__":
 
 
         # === [TEST]: predict object pose and update scene
-        pred_time_horizon = 5
-        minimum_update_duration = 0.2
-        start_t = rospy.Time.now().to_sec()
+        # minimum_update_duration = 0.2
+        # start_t = rospy.Time.now().to_sec()
+        # pred_timepoint = start_t + 5
         
-        last_update = planner.obj_pose_ts
-        while not rospy.is_shutdown():
-            if planner.obj_pose_ts - last_update < minimum_update_duration:
-                rospy.sleep(0.1)
-                continue
+        # last_update = planner.obj_pose_ts
 
-            pred_time_horizon -= planner.obj_pose_ts - last_update
+        pred_time_horizon = 0
+        while not rospy.is_shutdown():
+            if pred_time_horizon < 0.05:
+                pred_timepoint = rospy.Time.now().to_sec() + 5
+                rospy.loginfo("Prediction point at {:.2f}".format(pred_timepoint))
+            # if planner.obj_pose_ts - last_update < minimum_update_duration:
+            #     rospy.sleep(0.1)
+            #     continue
+
+            # pred_time_horizon = planner.obj_pose_ts - last_update
+            pred_time_horizon = pred_timepoint - rospy.Time.now().to_sec()
             pred_time_horizon = max(pred_time_horizon, 0.01)
 
-            last_update = planner.obj_pose_ts
-            pose_pred = planner.predict_trajectory(_pred_horizon=pred_time_horizon,_update_scene=True)
+            # last_update = planner.obj_pose_ts
+            pose_pred, pred_pt = planner.predict_trajectory(_pred_horizon=pred_time_horizon,_update_scene=True)
+
+            rospy.logdebug("observation (camera frame): {}".format(planner.obj_pose))
+            rospy.loginfo("prediction (camera frame) at {:.2f}s: {}".format(pred_pt, pose_pred))
+
             planner.calc_capture_pose_tftree(capt_palm_pose, pose_pred)
+            # planner.calc_capture_pose_tftree(capt_palm_pose)
+
             planner.update_moveit_scene()   # update real object
+
+            rospy.sleep(0.1)
             pass
 
-            if pred_time_horizon < 0.05:
-                pred_time_horizon = 5
         # === [END TEST]
 
     finally:

@@ -3,6 +3,7 @@
 import sys
 import rospy
 import numpy as np
+from panda_robot import PandaArm
 import moveit_commander
 from moveit_msgs.msg import DisplayTrajectory, Grasp, PlaceLocation
 from geometry_msgs.msg import Pose, PoseStamped
@@ -56,7 +57,7 @@ class Executor:
 
         ## Instantiate a `RobotCommander`_ object. Provides information such as the robot's
         ## kinematic model and the robot's current joint states
-        robot = moveit_commander.RobotCommander()
+        robot = PandaArm()
 
         ## Instantiate a `PlanningSceneInterface`_ object.  This provides a remote interface
         ## for getting, setting, and updating the robot's internal understanding of the
@@ -95,14 +96,14 @@ class Executor:
         print("============ End effector link: %s" % eef_link)
 
         # We can get a list of all the groups in the robot:
-        group_names = robot.get_group_names()
-        print("============ Available Planning Groups:", robot.get_group_names())
+        # group_names = robot.get_group_names()
+        # print("============ Available Planning Groups:", robot.get_group_names())
 
         # Sometimes for debugging it is useful to print the entire state of the
         # robot:
-        print("============ Printing robot state")
-        print(robot.get_current_state())
-        print("")
+        # print("============ Printing robot state")
+        # print(robot.get_current_state())
+        # print("")
         ## END_SUB_TUTORIAL
 
         # Misc variables
@@ -113,7 +114,7 @@ class Executor:
         self.display_trajectory_publisher = display_trajectory_publisher
         self.planning_frame = planning_frame
         self.eef_link = eef_link
-        self.group_names = group_names
+        # self.group_names = group_names
         pass
     
     def move_ee_to_cartesian_pose(self, _goal):
@@ -185,6 +186,66 @@ class Executor:
         self.move_group.pick(obj_name, grasp_msg)
         # self.move_group.pick("", grasp_msg)
         pass
+
+    def move_to_grasp_pose(self, _capt_pose:list):
+        # define grasp pose
+        grasp_msg = Grasp()
+        grasp_msg.grasp_pose.header.frame_id = "panda_link0"
+        grasp_msg.grasp_pose.pose = list_to_pose(_capt_pose)
+
+        # define approach before performing grasp
+        grasp_msg.pre_grasp_approach.direction.header.frame_id = "panda_link0"
+        grasp_msg.pre_grasp_approach.direction.vector.y = -1.0
+        grasp_msg.pre_grasp_approach.min_distance = 0.095
+        grasp_msg.pre_grasp_approach.desired_distance = 0.115
+
+        # define retreat after performing grasp
+        # grasp_msg.post_grasp_retreat.direction.header.frame_id = "panda_link0"
+        # grasp_msg.post_grasp_retreat.direction.vector.z = 1.0
+        # grasp_msg.post_grasp_retreat.min_distance = 0
+        # grasp_msg.post_grasp_retreat.desired_distance = 0
+
+        # open gripper
+        grasp_msg.pre_grasp_posture = self.open_gripper()
+
+        # close gripper
+        grasp_msg.grasp_posture = self.open_gripper()
+
+        # self.move_group.setSupportSurfaceName("ground");
+
+        # return self.move_group.pick(obj_name, grasp_msg)
+        return self.move_group.pick("", grasp_msg)
+
+    def grasp_and_retreat(self, _obj_name:str, _capt_pose:float, _finger_dist:float):
+        # define grasp pose
+        grasp_msg = Grasp()
+        grasp_msg.grasp_pose.header.frame_id = "panda_link0"
+        grasp_msg.grasp_pose.pose = list_to_pose(_capt_pose)
+
+        # define approach before performing grasp
+        # grasp_msg.pre_grasp_approach.direction.header.frame_id = "panda_link0"
+        # grasp_msg.pre_grasp_approach.direction.vector.y = -1.0
+        # grasp_msg.pre_grasp_approach.min_distance = 0.095
+        # grasp_msg.pre_grasp_approach.desired_distance = 0.115
+
+        # define retreat after performing grasp
+        grasp_msg.post_grasp_retreat.direction.header.frame_id = "panda_link0"
+        grasp_msg.post_grasp_retreat.direction.vector.z = 1.0
+        grasp_msg.post_grasp_retreat.min_distance = 0
+        grasp_msg.post_grasp_retreat.desired_distance = 0
+
+        # open gripper
+        # grasp_msg.pre_grasp_posture = self.open_gripper()
+
+        # close gripper
+        # grasp_msg.grasp_posture = self.open_gripper()
+        grasp_msg.grasp_posture = self.close_gripper(_finger_dist)
+
+        # self.move_group.setSupportSurfaceName("ground");
+
+        # return self.move_group.pick(_obj_name, grasp_msg)
+        # return self.move_group.pick("", grasp_msg)
+        return self.robot.get_gripper().close()
 
 
     def place(self, _place_pose:list, obj_name:str):
