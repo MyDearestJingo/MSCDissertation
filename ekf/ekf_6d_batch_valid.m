@@ -47,15 +47,10 @@ groundtruth = loadData('data/object_odom_rec.csv');
 % !   representation.
 for i = 1:size(estimation,1)
     % convert estimation from camera frame to world frame
-    % estimation(i,2:end) = cam2world(camLinkOptical, ...
-    %                                 camOpticalJoint, ...
-    %                                 estimation(i,2:end));
     estimation(i, 2:end) = cam2world(camPose, estimation(i,2:end));
     
     % change the DOPE trained model to Gazebo model representation
     estimation(i,5:8) = squatmultiply(estimation(i,5:8),eul2quat([0,0,pi/2]));
-    % estimation(i,2:4) = estimation(i,2:4) + ...
-    %     tform2trvec(quat2tform(estimation(i,5:8)) * trvec2tform([0,0,-.05]));
 
     estimation(i,2) = estimation(i,2) - 0.02;
 end
@@ -84,10 +79,6 @@ if ekf
     H = jacobian(h, x);
 
     stat = [
-        % estimation(1,2:4)';   % position
-        % estimation(1,5:8)';   % orientation in quaternion [d,i,j,k]
-        % zeros(3,1);           % twist linear velocities
-        % zeros(3,1);           % twist angular velocities
         zeros(3,1);   % position
         zeros(4,1);   % orientation in quaternion [d,i,j,k]
         zeros(3,1);   % twist linear velocities
@@ -101,9 +92,6 @@ if ekf
     statPredHis = [];
     zHis = [];
 
-    % DEBUG
-    % estimation = [estimation(1:31,:);estimation(32:33,:)];
-    % estimation = estimation(1:30,:);
     for i = 2:size(estimation,1)
         fprintf("EKF Progress: %d/%d\n",i-1, size(estimation,1)-1)
 
@@ -121,12 +109,6 @@ if ekf
         quatRot = squatmultiply(estimation(i,5:8), squatinv(estimation(i-1,5:8)));
         quatRot = squatnormalize(quatRot);
         eulRot = squat2eul(quatRot);
-        % deltaEul = quat2eul(estimation(i,5:8)) - quat2eul(estimation(i-1,5:8));
-        % angvel = deltaEul/difft;
-
-        % axangRot = quat2axang(quatRot);
-        % axangRot(1:3) = axangRot(1:3)./sqrt(sum(axangRot(1:3).^2));
-        % axangRot(4) = axangRot(4)/difft;
         
         % measurement vector
         zt = [
@@ -136,9 +118,7 @@ if ekf
             eulRot'/difft;                        % euler angular velocities
             % angvel';
         ];
-        % zt'
 
-        % stat = statPred + Kt * (zt - eval(subs(h, x, statPred)));
         stat = statPred + Kt * (zt - statPred);
         statSig = (eye(size(x,1)) - Kt * Ht) * statSigPred;
 
