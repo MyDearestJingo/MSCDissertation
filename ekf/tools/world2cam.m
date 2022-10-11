@@ -9,6 +9,8 @@
 %% @Return: 
 %   - pose: a 7-D row vector including 3-D position and an orientation 
 %       quaternion of the object in camera frame
+
+%% Old version for rrbot
 function pose = world2cam(camPose, eulOpticalJoint, objPose)
     cwR = quat2tform(camPose(4:7)) * eul2tform(eulOpticalJoint);
     cwH = trvec2tform(camPose(1:3)) * cwR;
